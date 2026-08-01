@@ -484,3 +484,48 @@ func sortedKeys(m map[string]string) []string {
 	}
 	return keys
 }
+
+// SuperscriptLine emits a line of body text with a raised marker in the
+// middle, using the Ts text-rise operator.
+//
+// Ts is the unambiguous superscript signal in spec section 4.6: a positive
+// rise needs no corroborating size change.
+func SuperscriptLine(font string, size, x, y float64, before, marker, after string) string {
+	var sb strings.Builder
+	sb.WriteString("BT\n")
+	fmt.Fprintf(&sb, "/%s %g Tf\n", font, size)
+	fmt.Fprintf(&sb, "1 0 0 1 %g %g Tm\n", x, y)
+	fmt.Fprintf(&sb, "(%s) Tj\n", escapeString(before))
+	// Raise and shrink, which is how a real superscript is set.
+	fmt.Fprintf(&sb, "%g Ts\n/%s %g Tf\n", size*0.33, font, size*0.7)
+	fmt.Fprintf(&sb, "(%s) Tj\n", escapeString(marker))
+	fmt.Fprintf(&sb, "0 Ts\n/%s %g Tf\n", font, size)
+	fmt.Fprintf(&sb, "(%s) Tj\n", escapeString(after))
+	sb.WriteString("ET\n")
+	return sb.String()
+}
+
+// ListPage emits a run of list items, each with a hanging indent on its
+// continuation lines.
+func ListPage(font string, size, x, top, leading float64, markers []string, items [][]string) string {
+	var sb strings.Builder
+	sb.WriteString("BT\n")
+	fmt.Fprintf(&sb, "/%s %g Tf\n", font, size)
+	y := top
+	for i, lines := range items {
+		marker := ""
+		if i < len(markers) {
+			marker = markers[i]
+		}
+		fmt.Fprintf(&sb, "1 0 0 1 %g %g Tm\n", x, y)
+		fmt.Fprintf(&sb, "(%s %s) Tj\n", escapeString(marker), escapeString(lines[0]))
+		y -= leading
+		for _, l := range lines[1:] {
+			fmt.Fprintf(&sb, "1 0 0 1 %g %g Tm\n", x+size*1.5, y)
+			fmt.Fprintf(&sb, "(%s) Tj\n", escapeString(l))
+			y -= leading
+		}
+	}
+	sb.WriteString("ET\n")
+	return sb.String()
+}

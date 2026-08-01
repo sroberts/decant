@@ -10,6 +10,18 @@ import (
 	"github.com/sroberts/decant/internal/pdf"
 )
 
+// SuperscriptOpen and SuperscriptClose bracket a superscript run inside a
+// line's text.
+//
+// Private-use code points rather than offsets: the text goes through NFC
+// normalization and whitespace collapsing after assembly, both of which shift
+// byte offsets, while leaving these untouched. Callers rendering XHTML turn
+// them into <sup>; every other consumer strips them.
+const (
+	SuperscriptOpen  = "\uE000"
+	SuperscriptClose = "\uE001"
+)
+
 // Line is a run of glyphs sharing a baseline, in reading order left to right.
 type Line struct {
 	// Text is the assembled string, with spaces inserted at gaps, ligatures
@@ -31,6 +43,10 @@ type Line struct {
 
 	// Rotation is the median baseline angle in degrees.
 	Rotation float64
+
+	// HasSuperscript reports that the text carries at least one superscript
+	// run, bracketed by SuperscriptOpen and SuperscriptClose.
+	HasSuperscript bool
 }
 
 // Indent returns the line's left edge, which paragraph detection compares
@@ -159,11 +175,11 @@ func clusterLines(cfg Config, gs []pdf.Glyph, fonts []*pdf.Font) []Line {
 		idx[i] = i
 	}
 	sort.SliceStable(idx, func(a, b int) bool {
-		ga, gb := gs[idx[a]], gs[idx[b]]
-		if ga.Y != gb.Y {
-			return ga.Y < gb.Y
+		ya, yb := unraisedBaseline(gs[idx[a]]), unraisedBaseline(gs[idx[b]])
+		if ya != yb {
+			return ya < yb
 		}
-		return ga.X < gb.X
+		return gs[idx[a]].X < gs[idx[b]].X
 	})
 
 	var lines []Line
@@ -185,17 +201,18 @@ func clusterLines(cfg Config, gs []pdf.Glyph, fonts []*pdf.Font) []Line {
 
 	for _, i := range idx {
 		g := gs[i]
+		y := unraisedBaseline(g)
 		if len(cur) == 0 {
-			ref = g.Y
+			ref = y
 			cur = append(cur, g)
 			continue
 		}
-		if math.Abs(g.Y-ref) <= tol {
+		if math.Abs(y-ref) <= tol {
 			cur = append(cur, g)
 			continue
 		}
 		flush()
-		ref = g.Y
+		ref = y
 		cur = append(cur, g)
 	}
 	flush()
@@ -221,6 +238,8 @@ func buildLine(cfg Config, gs []pdf.Glyph, fonts []*pdf.Font) (Line, bool) {
 	sort.SliceStable(gs, func(a, b int) bool { return gs[a].X < gs[b].X })
 
 	l := Line{Glyphs: gs}
+	// Size and baseline are needed during the glyph walk below, since
+	// superscript detection measures against them.
 	l.Size = medianGlyphSize(gs)
 	l.Baseline = medianBaseline(gs)
 	l.Rotation = gs[0].Rotation
@@ -233,13 +252,34 @@ func buildLine(cfg Config, gs []pdf.Glyph, fonts []*pdf.Font) (Line, bool) {
 	var sb strings.Builder
 	sb.Grow(len(gs) + 8)
 
+	// inSuper tracks an open superscript run so consecutive raised glyphs
+	// share one bracket pair rather than each getting their own.
+	inSuper := false
+	closeSuper := func() {
+		if inSuper {
+			sb.WriteString(SuperscriptClose)
+			inSuper = false
+		}
+	}
+
 	for i, g := range gs {
 		if i > 0 {
 			prev := gs[i-1]
 			gap := g.X - (prev.X + prev.Advance)
 			if gap > spaceThreshold(cfg, prev, fonts, medAdvance) {
+				closeSuper()
 				sb.WriteRune(' ')
 			}
+		}
+
+		super := isSuperscript(cfg, g, l.Baseline, l.Size)
+		switch {
+		case super && !inSuper:
+			sb.WriteString(SuperscriptOpen)
+			inSuper = true
+			l.HasSuperscript = true
+		case !super && inSuper:
+			closeSuper()
 		}
 		sb.WriteRune(g.Rune)
 
@@ -255,11 +295,62 @@ func buildLine(cfg Config, gs []pdf.Glyph, fonts []*pdf.Font) (Line, bool) {
 		l.Bounds = l.Bounds.Union(pdf.Rect{MinX: x0, MinY: top, MaxX: x1, MaxY: bot})
 	}
 
+	closeSuper()
+
 	l.Text = normalizeText(sb.String())
-	if strings.TrimSpace(l.Text) == "" {
+	if strings.TrimSpace(StripSuperscriptMarks(l.Text)) == "" {
 		return Line{}, false
 	}
 	return l, true
+}
+
+// isSuperscript applies the test in spec section 4.6: a positive Ts rise, or
+// a baseline offset above SuperscriptRiseEm combined with a reduced size.
+//
+// The two are separate signals. A rise is explicit and needs no corroboration;
+// a raised baseline alone would also match the first line of a block sitting
+// slightly high, so it requires the smaller size as well.
+func isSuperscript(cfg Config, g pdf.Glyph, baseline, lineSize float64) bool {
+	if g.Rise > 0 {
+		return true
+	}
+	if lineSize <= 0 {
+		return false
+	}
+	raised := baseline - g.Y
+	return raised > cfg.SuperscriptRiseEm*lineSize &&
+		g.Size < cfg.SuperscriptSizeRatio*lineSize
+}
+
+// StripSuperscriptMarks removes the superscript brackets, giving the plain
+// text every consumer other than the XHTML renderer wants.
+func StripSuperscriptMarks(s string) string {
+	if !strings.ContainsAny(s, SuperscriptOpen+SuperscriptClose) {
+		return s
+	}
+	return strings.NewReplacer(
+		SuperscriptOpen, "", SuperscriptClose, "").Replace(s)
+}
+
+// SuperscriptLabels returns the text of each superscript run.
+func SuperscriptLabels(s string) []string {
+	var out []string
+	rest := s
+	for {
+		i := strings.Index(rest, SuperscriptOpen)
+		if i < 0 {
+			return out
+		}
+		rest = rest[i+len(SuperscriptOpen):]
+		j := strings.Index(rest, SuperscriptClose)
+		if j < 0 {
+			return out
+		}
+		if label := strings.TrimSpace(rest[:j]); label != "" {
+			out = append(out, label)
+		}
+		rest = rest[j+len(SuperscriptClose):]
+	}
 }
 
 // spaceThreshold returns the gap width, in page space, above which a space is
@@ -348,10 +439,19 @@ func medianGlyphSize(gs []pdf.Glyph) float64 {
 func medianBaseline(gs []pdf.Glyph) float64 {
 	v := make([]float64, 0, len(gs))
 	for _, g := range gs {
-		v = append(v, g.Y)
+		v = append(v, unraisedBaseline(g))
 	}
 	return median(v)
 }
+
+// unraisedBaseline returns where a glyph would sit without its text rise.
+//
+// A superscript is set with a positive Ts, which typically raises it by about
+// a third of an em: more than the 0.3-of-median-height clustering tolerance,
+// so clustering on the painted position would give every superscript a line
+// of its own. The rise is known explicitly, so it can simply be undone.
+// Page space runs y-down, which is why the rise is added back.
+func unraisedBaseline(g pdf.Glyph) float64 { return g.Y + g.Rise }
 
 func medianAdvance(gs []pdf.Glyph) float64 {
 	v := make([]float64, 0, len(gs))

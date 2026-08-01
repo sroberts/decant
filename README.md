@@ -7,11 +7,11 @@ order. decant is a single static Go binary that recovers the second from the
 first, plus an importable library so a TUI can drive the same code path
 without shelling out.
 
-Status: **M3**. Text extraction, column detection, paragraph reconstruction,
-heading classification, outline-driven chapter splitting, and image
-extraction with figures and captions all work end to end, and every output
-passes `epubcheck` with zero errors. Tables are not implemented yet; see
-[Milestones](#milestones).
+Status: **M4**. Everything except table detection: text extraction, column
+detection, paragraph reconstruction, heading classification, outline-driven
+chapter splitting, images with figures and captions, furniture removal,
+dehyphenation, lists, blockquotes, code blocks, and linked footnotes. Every
+output passes `epubcheck` with zero errors. See [Milestones](#milestones).
 
 MIT licensed. Full design in [`spec.md`](spec.md).
 
@@ -140,15 +140,25 @@ model at any stage.
   and DCT passthrough when nothing needs the pixels
 - Background and watermark rejection, size floors, figures placed in reading
   order, caption binding, and grayscale dithering for the crosspoint profile
+- Running head and folio removal by repeated text and repeated position
+- Dehyphenation by inverted Liang pattern matching in eight languages
+- Ordered and unordered lists with inferred start, blockquotes, code blocks
+- Superscript detection and footnotes linked with `epub:type` noteref
 - Deterministic EPUB 3.3 output with an EPUB 2 NCX fallback
 - Encrypted, scanned, and malformed input detection with distinct exit codes
 - `convert`, `probe`, `meta`, and `version` subcommands
 
 ## Not implemented yet
 
-`--keep-headers`, `--no-dehyphenate`, and `--table-mode` are accepted and
-print a notice naming the milestone that implements them. `--jobs` is
-accepted but page processing is currently sequential.
+`--table-mode` is accepted and prints a notice; table detection is M5.
+`--jobs` is accepted but page processing is currently sequential.
+
+Dehyphenation ships patterns for English, German, Spanish, French, Italian,
+Dutch, Polish, and Portuguese. Russian and Swedish are **deliberately
+absent**: their `hyph-utf8` files are LPPL-only, and spec §4.6 says to drop
+the language rather than take on a share-alike or renaming condition. Those
+documents convert normally with dehyphenation disabled and a diagnostic.
+See [`THIRD_PARTY.md`](THIRD_PARTY.md).
 
 JPEG 2000 and JBIG2 images drop with a diagnostic: neither has a pure-Go
 decoder, and spec principle 2 rules out cgo. Inline (`BI`) images have their
@@ -161,8 +171,8 @@ position recorded for scan detection but are not extracted.
 | M1 | Parse, glyph extraction, line assembly, plain paragraphs | done |
 | M2 | Block segmentation, column detection, headings, outline TOC, chapter splitting | done |
 | M3 | Image extraction, placement, re-encoding, figures and captions | done |
-| M4 | Furniture removal, dehyphenation, footnotes, lists, blockquotes | next |
-| M5 | Table detection, device profiles, conversion report, `probe` | partial |
+| M4 | Furniture removal, dehyphenation, footnotes, lists, blockquotes | done |
+| M5 | Table detection, device profiles, conversion report, `probe` | next (partial) |
 | M6 | Public API stabilization and CrossPoint TUI integration | |
 
 M1 through M3 ship before anything gets optimized. Layout heuristics need
@@ -226,6 +236,11 @@ go test -run TestDeterministicOutput ./...
 | `golang.org/x/image` | BSD-3 | `font/sfnt` metrics, Catmull-Rom resampling |
 | `golang.org/x/text` | BSD-3 | Unicode normalization |
 | `github.com/hhrutter/tiff` | BSD-3 | CMYK TIFF decode, which x/image rejects |
+
+Hyphenation patterns are vendored from
+[hyph-utf8](https://github.com/hyphenation/tex-hyphen) under MIT, BSD, or
+unrestricted terms only; [`THIRD_PARTY.md`](THIRD_PARTY.md) records the
+per-file audit.
 
 `unidoc/unipdf` (AGPL or paid), `go-fitz` and other MuPDF bindings (cgo plus
 AGPL), and `rsc.io/pdf` (no font or positioning support) are all ruled out by

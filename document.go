@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"time"
+
+	"github.com/sroberts/decant/internal/layout"
 )
 
 // BlockKind classifies a block after structure classification.
@@ -66,6 +68,23 @@ type Block struct {
 	// InlineImage marks a figure narrow enough, and inside a paragraph, to
 	// flow in the text rather than stand as a block. Spec 4.7.
 	InlineImage bool
+
+	// ListItems holds a list block's items, one per entry. Empty for every
+	// other kind.
+	ListItems []string
+	// ListOrdered selects ol over ul.
+	ListOrdered bool
+	// ListStart is the first item's number, inferred from its marker. Zero
+	// means the list starts at one.
+	ListStart int
+
+	// Superscripts are the superscript run labels found in Text, in order.
+	Superscripts []string
+	// NoteRefs maps a superscript label to the ID of the footnote block it
+	// references. Spec 4.6 links these with epub:type noteref and footnote.
+	NoteRefs map[string]string
+	// NoteLabel is a footnote block's own marker, e.g. "1" or "†".
+	NoteLabel string
 }
 
 // Rect is an axis-aligned rectangle in page space, with y increasing
@@ -149,7 +168,7 @@ func blockID(page int, kind BlockKind, text string) string {
 	h.Write([]byte{
 		byte(page >> 24), byte(page >> 16), byte(page >> 8), byte(page),
 	})
-	h.Write([]byte(text))
+	h.Write([]byte(layout.StripSuperscriptMarks(text)))
 	// Eight hex characters is 32 bits. Anchor collisions within one document
 	// would break a cross-reference, so this is checked and extended by the
 	// caller when it collides.

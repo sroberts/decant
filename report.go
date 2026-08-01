@@ -27,6 +27,33 @@ type Diagnostic struct {
 	Message string `json:"message"`
 }
 
+// HyphenationReport summarizes what dehyphenation did.
+//
+// Spec section 4.6 asks for every decision to be recorded. A full-length book
+// makes thousands, so the counts cover all of them and Decisions carries a
+// bounded sample; the full trail would make a report file unreadable.
+type HyphenationReport struct {
+	// Language is the pattern set that was used, empty when dehyphenation
+	// was disabled.
+	Language string `json:"language,omitempty"`
+	// Patterns is the number of patterns in that set.
+	Patterns int `json:"patterns,omitempty"`
+	// Dropped counts hyphens removed as typesetting artifacts, Kept counts
+	// those judged lexical.
+	Dropped int `json:"dropped"`
+	Kept    int `json:"kept"`
+	// Decisions is a bounded sample of the individual calls.
+	Decisions []HyphenDecision `json:"decisions,omitempty"`
+}
+
+// HyphenDecision records one line-break hyphen and the reasoning behind it.
+type HyphenDecision struct {
+	Left    string `json:"left"`
+	Right   string `json:"right"`
+	Dropped bool   `json:"dropped"`
+	Reason  string `json:"reason"`
+}
+
 // PageMetrics holds the per-page numbers the report surfaces.
 type PageMetrics struct {
 	Page int `json:"page"`
@@ -84,6 +111,10 @@ type Report struct {
 	ImagesPlaced int `json:"images_placed"`
 	// ImageBytes is the total encoded size of those images.
 	ImageBytes int `json:"image_bytes"`
+	// Hyphenation summarizes the dehyphenation decisions in spec 4.6.
+	Hyphenation HyphenationReport `json:"hyphenation"`
+	// FurnitureRemoved counts blocks dropped as running heads or folios.
+	FurnitureRemoved int `json:"furniture_removed"`
 	// Chapters is the number of XHTML files written.
 	Chapters int `json:"chapters"`
 	// OutputBytes is the size of the EPUB.

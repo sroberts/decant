@@ -70,15 +70,12 @@ func cmdConvert(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	// Features accepted for CLI compatibility with the spec surface but not
 	// yet implemented. Refusing silently would be worse than saying so.
 	for name, milestone := range map[string]string{
-		"keep-headers":   "M4 (furniture removal)",
-		"no-dehyphenate": "M4 (dehyphenation)",
-		"table-mode":     "M5 (table detection)",
+		"table-mode": "M5 (table detection)",
 	} {
 		if set[name] {
 			fmt.Fprintf(stderr, "decant: --%s is not implemented yet; it lands in %s\n", name, milestone)
 		}
 	}
-	_ = keepHeaders
 	_ = tableMode
 
 	nColumns, err := parseColumns(*columns)
@@ -224,6 +221,14 @@ func summarize(w io.Writer, rep *decant.Report, outPath string) {
 	if rep.ImagesPlaced > 0 {
 		fmt.Fprintf(w, "        %d image(s), %s\n",
 			rep.ImagesPlaced, humanBytes(int64(rep.ImageBytes)))
+	}
+	if h := rep.Hyphenation; h.Dropped > 0 || h.Kept > 0 {
+		fmt.Fprintf(w, "        dehyphenation [%s]: %d joined, %d kept\n",
+			h.Language, h.Dropped, h.Kept)
+	}
+	if rep.FurnitureRemoved > 0 {
+		fmt.Fprintf(w, "        removed %d running head(s) and page number(s)\n",
+			rep.FurnitureRemoved)
 	}
 	fmt.Fprintf(w, "        quality score %d/100", rep.QualityScore)
 	if n := rep.Warnings(); n > 0 {

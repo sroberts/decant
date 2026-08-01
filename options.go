@@ -210,6 +210,42 @@ type Heuristics struct {
 	//
 	// Not in the spec: without it a sidebar level with a figure binds to it.
 	CaptionOverlapRatio float64
+
+	// FurnitureBandRatio is the fraction of page height at the top and bottom
+	// in which running heads and folios live. Default 0.08.
+	FurnitureBandRatio float64
+
+	// FurnitureRepeatRatio is the fraction of sampled pages a block must
+	// repeat on to be removed as furniture. Default 0.6.
+	FurnitureRepeatRatio float64
+
+	// FurnitureSamplePages is how many pages the furniture sampler examines.
+	// Default 20.
+	FurnitureSamplePages int
+
+	// FurnitureMinPages is the document length below which furniture removal
+	// is skipped. Default 5.
+	FurnitureMinPages int
+
+	// QuoteIndentEm is how far both margins must be inset beyond the body, in
+	// em, for a blockquote. Default 1.5.
+	QuoteIndentEm float64
+
+	// FootnoteBandRatio is the fraction of page height, from the bottom, in
+	// which a footnote may sit. Default 0.2.
+	FootnoteBandRatio float64
+
+	// FootnoteSizeRatio is how far below the body font a footnote is set.
+	// Default 0.1.
+	FootnoteSizeRatio float64
+
+	// SuperscriptRiseEm is the baseline offset, as a fraction of em, above
+	// which a glyph counts as a superscript. Default 0.2.
+	SuperscriptRiseEm float64
+
+	// SuperscriptSizeRatio is the size ratio below which a raised glyph
+	// counts as a superscript. Default 0.85.
+	SuperscriptSizeRatio float64
 }
 
 // DefaultHeuristics returns the documented defaults from spec section 4.
@@ -246,6 +282,17 @@ func DefaultHeuristics() Heuristics {
 		CaptionGapLines:       1.5,
 		CaptionSizeRatio:      0.05,
 		CaptionOverlapRatio:   0.3,
+
+		FurnitureBandRatio:   0.08,
+		FurnitureRepeatRatio: 0.6,
+		FurnitureSamplePages: 20,
+		FurnitureMinPages:    5,
+
+		QuoteIndentEm:        1.5,
+		FootnoteBandRatio:    0.2,
+		FootnoteSizeRatio:    0.1,
+		SuperscriptRiseEm:    0.2,
+		SuperscriptSizeRatio: 0.85,
 	}
 }
 

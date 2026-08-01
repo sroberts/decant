@@ -133,6 +133,69 @@ type Config struct {
 	// an image to be considered its caption. Not in the spec: without it a
 	// sidebar level with a figure binds to it as a caption.
 	CaptionOverlapRatio float64
+
+	// --- structure, spec 4.6 ---
+
+	// Dehyphenator decides line-break hyphens. Nil disables dehyphenation,
+	// which is what --no-dehyphenate and an unsupported language both do.
+	Dehyphenator Dehyphenator
+
+	// QuoteIndentEm is how far both margins must be inset beyond the block
+	// median, in em, for a blockquote. Spec 4.6: 1.5.
+	QuoteIndentEm float64
+
+	// FootnoteBandRatio is the fraction of page height, measured from the
+	// bottom, in which a footnote may sit. Spec 4.6: 0.2.
+	FootnoteBandRatio float64
+
+	// FootnoteSizeRatio is how far below the body font a footnote is set.
+	// Spec 4.6: 0.1.
+	FootnoteSizeRatio float64
+
+	// SuperscriptRiseEm is the baseline offset above which a glyph counts as
+	// a superscript, as a fraction of em. Spec 4.6: 0.2.
+	SuperscriptRiseEm float64
+
+	// SuperscriptSizeRatio is how much smaller than its line a superscript
+	// glyph is. Spec 4.6 says "reduced size"; 0.85 is the ratio below which
+	// a glyph qualifies.
+	SuperscriptSizeRatio float64
+
+	// --- furniture, spec 4.5 ---
+
+	// FurnitureBandRatio is the fraction of page height at the top and bottom
+	// in which running heads and folios live. Spec 4.5: 0.08.
+	FurnitureBandRatio float64
+
+	// FurnitureRepeatRatio is the fraction of sampled pages a block's text
+	// must repeat on to be removed. Spec 4.5: 0.6.
+	FurnitureRepeatRatio float64
+
+	// FurnitureSamplePages is how many pages the sampler examines.
+	// Spec 4.5: 20.
+	FurnitureSamplePages int
+
+	// FurnitureMinPages is the document length below which furniture removal
+	// is skipped entirely. Spec 4.5: 5.
+	FurnitureMinPages int
+
+	// KeepHeaders retains running heads and folios. Spec 3: --keep-headers.
+	KeepHeaders bool
+
+	// ListMarker reports whether a line opens with a list marker.
+	//
+	// Paragraph reconstruction needs it: spec 4.6 sets list items with a
+	// hanging indent, and the indent rule would otherwise split every item
+	// between its first line and its continuation. Nil disables the check.
+	ListMarker func(string) bool
+}
+
+// Dehyphenator decides whether a line-break hyphen is a typesetting artifact
+// or part of the word. Spec 4.6 inverts Liang's algorithm to answer it.
+type Dehyphenator interface {
+	// JoinFragments reports whether the hyphen between two fragments should
+	// be dropped, along with a short reason for the conversion report.
+	JoinFragments(left, right string) (drop bool, reason string)
 }
 
 // DefaultConfig returns the documented defaults from spec section 4.
@@ -163,5 +226,16 @@ func DefaultConfig() Config {
 		CaptionGapLines:       1.5,
 		CaptionSizeRatio:      0.05,
 		CaptionOverlapRatio:   0.3,
+
+		QuoteIndentEm:        1.5,
+		FootnoteBandRatio:    0.2,
+		FootnoteSizeRatio:    0.1,
+		SuperscriptRiseEm:    0.2,
+		SuperscriptSizeRatio: 0.85,
+
+		FurnitureBandRatio:   0.08,
+		FurnitureRepeatRatio: 0.6,
+		FurnitureSamplePages: 20,
+		FurnitureMinPages:    5,
 	}
 }

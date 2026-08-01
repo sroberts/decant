@@ -47,6 +47,11 @@ func New(opts Options) (*Converter, error) {
 	cfg := layoutConfig(opts.Heuristics)
 	cfg.Columns = opts.Columns
 	cfg.KeepSmallImages = opts.KeepSmallImages
+	cfg.KeepHeaders = opts.KeepHeaders
+	cfg.ListMarker = func(s string) bool {
+		_, ok := parseListMarker(s)
+		return ok
+	}
 	return &Converter{opts: opts, cfg: cfg}, nil
 }
 
@@ -74,6 +79,17 @@ func layoutConfig(h Heuristics) layout.Config {
 		ColumnMinGlyphRatio:  h.ColumnMinGlyphRatio,
 		ColumnMinRows:        h.ColumnMinRows,
 		ColumnMinLines:       h.ColumnMinLines,
+
+		QuoteIndentEm:        h.QuoteIndentEm,
+		FootnoteBandRatio:    h.FootnoteBandRatio,
+		FootnoteSizeRatio:    h.FootnoteSizeRatio,
+		SuperscriptRiseEm:    h.SuperscriptRiseEm,
+		SuperscriptSizeRatio: h.SuperscriptSizeRatio,
+
+		FurnitureBandRatio:   h.FurnitureBandRatio,
+		FurnitureRepeatRatio: h.FurnitureRepeatRatio,
+		FurnitureSamplePages: h.FurnitureSamplePages,
+		FurnitureMinPages:    h.FurnitureMinPages,
 
 		BackgroundCoverRatio:  h.BackgroundCoverRatio,
 		MinImagePoints:        h.MinImagePoints,
@@ -114,6 +130,11 @@ func (c *Converter) Analyze(ctx context.Context, r io.ReaderAt, size int64) (*Do
 	}
 	c.applyMetadata(doc, src)
 
+	// The pattern set depends on the resolved language, so the layout config
+	// is finalized per document rather than per converter.
+	cfg := c.cfg
+	cfg.Dehyphenator = c.resolveDehyphenator(doc.Language, rep)
+
 	pages := c.selectedPages(src.PageCount())
 	if len(pages) == 0 {
 		return nil, &UsageError{
@@ -152,21 +173,38 @@ func (c *Converter) Analyze(ctx context.Context, r io.ReaderAt, size int64) (*Do
 	var feats []blockFeatures
 	hist := fontHistogram{}
 	imgs := newImageSet()
+	pageHeights := map[int]float64{}
 
 	for _, idx := range pages {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		c.analyzePage(src, idx, cache, doc, &feats, hist, entries, entriesByPage[idx], imgs, rep)
+		c.analyzePage(cfg, src, idx, cache, doc, &feats, hist, entries,
+			entriesByPage[idx], imgs, pageHeights, rep)
 	}
 	doc.Images = imgs.sorted()
 
+	// Stage 5 runs document-wide: a running head is identifiable only by its
+	// repetition across pages.
+	doc.Blocks, feats = c.removeFurniture(doc.Blocks, feats, pageHeights, len(pages), rep)
+
 	// Stage 6 runs document-wide: the body font is a whole-document statistic
 	// and the outline spans pages.
+	//
+	// The footnote and blockquote tests need the same document-level context,
+	// so their features are filled in here rather than per page.
+	doc.Blocks, feats = c.mergeFootnoteMarkers(doc.Blocks, feats, pageHeights)
+	c.fillStructureFeatures(doc.Blocks, feats, pageHeights, hist)
+
 	reconcileOutline(doc.Blocks, feats, entries, rep)
 	c.classify(doc.Blocks, feats, hist, rep)
+	doc.Blocks, feats = groupLists(doc.Blocks, feats)
 
+	// IDs must exist before footnotes are linked, since a noteref points at
+	// the footnote block's anchor.
 	assignBlockIDs(doc.Blocks)
+	c.linkFootnotes(doc.Blocks, rep)
+
 	for _, b := range doc.Blocks {
 		rep.Blocks[b.Kind]++
 		if b.Kind == KindHeading {
@@ -184,6 +222,7 @@ func (c *Converter) Analyze(ctx context.Context, r io.ReaderAt, size int64) (*Do
 // analyzePage runs stages 2 through 5 for one page and appends its blocks.
 // Structure classification is document-wide and runs after every page.
 func (c *Converter) analyzePage(
+	cfg layout.Config,
 	src *pdf.Document,
 	idx int,
 	cache map[int]*pdf.PageContent,
@@ -193,6 +232,7 @@ func (c *Converter) analyzePage(
 	entries []outlineEntry,
 	entryIdx []int,
 	imgs *imageSet,
+	pageHeights map[int]float64,
 	rep *Report,
 ) {
 	m := PageMetrics{Page: idx}
@@ -203,6 +243,8 @@ func (c *Converter) analyzePage(
 		rep.Pages = append(rep.Pages, m)
 		return
 	}
+
+	pageHeights[idx] = page.Height
 
 	// Convert this page's outline destinations while its geometry is loaded.
 	for _, ei := range entryIdx {
@@ -227,7 +269,7 @@ func (c *Converter) analyzePage(
 			"content stream interpretation aborted on a parser fault; page text is incomplete or absent")
 	}
 
-	pl := layout.AnalyzePage(c.cfg, pc)
+	pl := layout.AnalyzePage(cfg, pc)
 	m.Glyphs = pl.GlyphCount
 	m.DecodeFailures = pl.DecodeFailures
 	m.Lines = len(pl.Lines)
@@ -258,18 +300,18 @@ func (c *Converter) analyzePage(
 	// Accumulate the document-wide font statistics the body font derives
 	// from, weighted by glyph count as spec section 4.6 requires.
 	for _, l := range pl.Lines {
-		family, bold := "", false
+		family, bold, fixed := "", false, false
 		if l.Font != nil {
-			family, bold = l.Font.Family, l.Font.Bold
+			family, bold, fixed = l.Font.Family, l.Font.Bold, l.Font.FixedPitch
 		}
-		hist.add(family, l.Size, bold, len(l.Glyphs))
+		hist.add(family, l.Size, bold, fixed, len(l.Glyphs))
 	}
 
 	// Figures are placed before paragraphs are emitted so a caption block can
 	// be consumed by its figure rather than appearing twice.
 	bodySize := medianLineSize(pl.Lines)
 	figs, captionBlocks := layout.PlaceFigures(
-		c.cfg, pl, pc.Images, page.Width, page.Height, bodySize)
+		cfg, pl, pc.Images, page.Width, page.Height, bodySize)
 	imageIDs := c.collectPageImages(src, idx, figureDraws(figs), imgs, rep)
 
 	if n := len(pc.Images) - len(figs); n > 0 {
@@ -298,36 +340,66 @@ func (c *Converter) analyzePage(
 		if captionBlocks[bi] {
 			continue
 		}
-		for _, p := range layout.Reconstruct(c.cfg, b) {
+		for _, p := range layout.Reconstruct(cfg, b) {
 			text := strings.TrimSpace(p.Text)
 			if text == "" {
 				continue
 			}
-			family, bold := "", false
+			family, bold, fixed := "", false, false
 			if p.Font != nil {
-				family, bold = p.Font.Family, p.Font.Bold
+				family, bold, fixed = p.Font.Family, p.Font.Bold, p.Font.FixedPitch
 			}
+			rep.Hyphenation.Dropped += p.HyphensDropped
+			rep.Hyphenation.Kept += p.HyphensKept
+			for _, d := range p.HyphenDecisions {
+				if len(rep.Hyphenation.Decisions) >= maxReportedHyphenDecisions {
+					break
+				}
+				rep.Hyphenation.Decisions = append(rep.Hyphenation.Decisions,
+					HyphenDecision{
+						Left: d.Left, Right: d.Right,
+						Dropped: d.Dropped, Reason: d.Reason,
+					})
+			}
+
+			supers := layout.SuperscriptLabels(text)
+
+			bf := blockFeatures{
+				size:       p.Size,
+				family:     family,
+				bold:       bold,
+				fixedPitch: fixed,
+				words:      countWords(text),
+				terminal:   endsWithTerminal(text),
+				fullWidth:  b.Column == -1,
+				lines:      len(p.Lines),
+			}
+			// Spec 4.6's list test: an opening marker plus a hanging indent
+			// on the continuation lines. A single-line block cannot show a
+			// hanging indent, so the marker alone carries it there.
+			if lm, ok := parseListMarker(text); ok {
+				if len(p.Lines) < 2 || hasHangingIndent(p.Lines) {
+					bf.listMarker = true
+					bf.listOrdered = lm.ordered
+					bf.listStart = lm.start
+					bf.listText = lm.text
+				}
+			}
+
 			items = append(items, item{
 				srcBlock: bi,
 				block: Block{
 					// Kind and Level are filled in by classify once every
 					// page has contributed to the font histogram.
-					Kind:   KindParagraph,
-					Text:   text,
-					Page:   idx,
-					Bounds: toRect(p.Bounds),
-					Size:   p.Size,
-					Font:   family,
+					Kind:         KindParagraph,
+					Text:         text,
+					Superscripts: supers,
+					Page:         idx,
+					Bounds:       toRect(p.Bounds),
+					Size:         p.Size,
+					Font:         family,
 				},
-				feat: blockFeatures{
-					size:      p.Size,
-					family:    family,
-					bold:      bold,
-					words:     countWords(text),
-					terminal:  endsWithTerminal(text),
-					fullWidth: b.Column == -1,
-					lines:     len(p.Lines),
-				},
+				feat: bf,
 			})
 		}
 	}
@@ -367,6 +439,70 @@ func (c *Converter) analyzePage(
 
 	rep.Pages = append(rep.Pages, m)
 }
+
+// fillStructureFeatures computes the footnote and blockquote tests, both of
+// which are measured against document-level statistics.
+//
+// The body margins are the modal left and right text edges across the
+// document. Spec section 4.6 defines a blockquote as inset "beyond body" on
+// both sides, which only means something relative to where body text sits.
+func (c *Converter) fillStructureFeatures(
+	blocks []Block,
+	feats []blockFeatures,
+	pageHeights map[int]float64,
+	hist fontHistogram,
+) {
+	body, ok := hist.mode()
+	if !ok {
+		return
+	}
+	left, right := modalMargins(blocks, feats)
+
+	for i := range blocks {
+		if feats[i].isFigure {
+			continue
+		}
+		c.footnoteFeatures(blocks[i], &feats[i], pageHeights[blocks[i].Page], body)
+		c.quoteFeatures(blocks[i], &feats[i], left, right)
+	}
+}
+
+// modalMargins returns the most common left and right text edges, rounded to
+// the point.
+//
+// A mode rather than a mean: a document with a few deeply indented quotes
+// would have its mean dragged inward, which is precisely the signal the
+// blockquote test is trying to measure against.
+func modalMargins(blocks []Block, feats []blockFeatures) (float64, float64) {
+	leftCounts := map[int]int{}
+	rightCounts := map[int]int{}
+	for i, b := range blocks {
+		// Only multi-line prose defines the measure. A heading or a caption
+		// is routinely centered or short.
+		if feats[i].isFigure || feats[i].lines < 2 {
+			continue
+		}
+		leftCounts[int(math.Round(b.Bounds.MinX))]++
+		rightCounts[int(math.Round(b.Bounds.MaxX))]++
+	}
+	return float64(modeOf(leftCounts)), float64(modeOf(rightCounts))
+}
+
+// modeOf returns the most frequent key, breaking ties toward the smaller
+// value so the result is deterministic.
+func modeOf(counts map[int]int) int {
+	best, bestN := 0, 0
+	for v, n := range counts {
+		if n > bestN || (n == bestN && v < best) {
+			best, bestN = v, n
+		}
+	}
+	return best
+}
+
+// maxReportedHyphenDecisions caps the audit trail in the conversion report.
+// The counts cover every decision; this bounds only the individual entries.
+const maxReportedHyphenDecisions = 40
 
 // figureInsertIndex finds where a figure belongs in an already-ordered
 // sequence of emitted items.

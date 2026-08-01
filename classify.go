@@ -28,6 +28,19 @@ type blockFeatures struct {
 	// isFigure marks a block that carries an image rather than text, which
 	// classification leaves alone.
 	isFigure bool
+
+	// fixedPitch marks a block set in a monospaced family, which spec 4.6
+	// treats as code.
+	fixedPitch bool
+	// footnote, listMarker, and quoteIndent hold the remaining structure
+	// tests from spec 4.6, filled in before classifyStructure runs.
+	footnote    bool
+	listMarker  bool
+	quoteIndent bool
+	// listOrdered, listStart, and listText carry the parsed marker.
+	listOrdered bool
+	listStart   int
+	listText    string
 }
 
 // fontKey identifies a typographic style for the body font computation.
@@ -36,6 +49,9 @@ type fontKey struct {
 	// size is quantized so that 9.96 and 10.02 land in the same bucket.
 	size float64
 	bold bool
+	// fixedPitch marks a monospaced family. Code detection compares against
+	// it, so a book set entirely in a monospaced face is not all code.
+	fixedPitch bool
 }
 
 // sizeQuantum is the bucket width, in points, for grouping font sizes.
@@ -50,11 +66,14 @@ func quantizeSize(v float64) float64 {
 // fontHistogram accumulates glyph counts per style across a document.
 type fontHistogram map[fontKey]int
 
-func (h fontHistogram) add(family string, size float64, bold bool, glyphs int) {
+func (h fontHistogram) add(family string, size float64, bold, fixedPitch bool, glyphs int) {
 	if glyphs <= 0 {
 		return
 	}
-	h[fontKey{family: family, size: quantizeSize(size), bold: bold}] += glyphs
+	h[fontKey{
+		family: family, size: quantizeSize(size),
+		bold: bold, fixedPitch: fixedPitch,
+	}] += glyphs
 }
 
 // mode returns the glyph-count-weighted modal style, which spec section 4.6
@@ -148,6 +167,10 @@ func (c *Converter) classify(blocks []Block, feats []blockFeatures, hist fontHis
 		rep.warn("classify", -1,
 			"no headings were detected; the document will convert as one chapter")
 	}
+
+	// The remaining kinds from spec 4.6 are decided against the same body
+	// font, after headings so a heading is never reclassified.
+	c.classifyStructure(blocks, feats, body, rep)
 }
 
 // looksLikeHeading applies the two tests from spec section 4.6.

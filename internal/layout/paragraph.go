@@ -18,6 +18,20 @@ type Paragraph struct {
 	Size float64
 	// Font is the dominant font across the paragraph.
 	Font *pdf.Font
+
+	// HyphensDropped and HyphensKept count the line-break hyphen decisions
+	// made while joining this paragraph's lines.
+	HyphensDropped, HyphensKept int
+	// HyphenDecisions is a bounded audit trail of those decisions.
+	HyphenDecisions []HyphenDecision
+}
+
+// HyphenDecision records one line-break hyphen and why it was kept or
+// dropped, which spec section 4.6 requires the conversion report to carry.
+type HyphenDecision struct {
+	Left, Right string
+	Dropped     bool
+	Reason      string
 }
 
 // Block is a group of lines that belong together: one visual unit within one
@@ -147,9 +161,6 @@ func fontFamily(f *pdf.Font) string {
 
 // Reconstruct turns a block's lines into paragraphs, following the rules in
 // spec section 4.6.
-//
-// Dehyphenation is spec section 4.6 and lands in M4; line-break hyphens
-// survive here verbatim.
 func Reconstruct(cfg Config, b Block) []Paragraph {
 	if len(b.Lines) == 0 {
 		return nil
@@ -166,7 +177,7 @@ func Reconstruct(cfg Config, b Block) []Paragraph {
 		if len(cur) == 0 {
 			return
 		}
-		paras = append(paras, buildParagraph(cur))
+		paras = append(paras, buildParagraph(cfg, cur))
 		cur = nil
 	}
 
@@ -194,6 +205,25 @@ func Reconstruct(cfg Config, b Block) []Paragraph {
 			blockWidth > 0 &&
 			prev.Width() < cfg.ShortLineRatio*blockWidth
 
+		// A line opening with a list marker always starts a new item, and a
+		// line hanging-indented under one always continues it. Without both
+		// rules the indent test cuts every list item in half and glues its
+		// continuation to the next item's marker.
+		if cfg.ListMarker != nil {
+			if cfg.ListMarker(StripSuperscriptMarks(l.Text)) {
+				flush()
+				cur = append(cur, l)
+				leadings = nil
+				continue
+			}
+			if len(cur) > 0 && cfg.ListMarker(StripSuperscriptMarks(cur[0].Text)) &&
+				l.Indent() > cur[0].Indent() {
+				leadings = append(leadings, gap)
+				cur = append(cur, l)
+				continue
+			}
+		}
+
 		if indented || gapped || ended {
 			flush()
 			cur = append(cur, l)
@@ -208,18 +238,35 @@ func Reconstruct(cfg Config, b Block) []Paragraph {
 	return paras
 }
 
-func buildParagraph(lines []Line) Paragraph {
+func buildParagraph(cfg Config, lines []Line) Paragraph {
 	p := Paragraph{Lines: lines}
 
-	var sb strings.Builder
-	for i, l := range lines {
-		if i > 0 {
-			sb.WriteByte(' ')
-		}
-		sb.WriteString(strings.TrimSpace(l.Text))
+	// Pieces are assembled rather than streamed into a builder because
+	// dropping a line-break hyphen has to edit the piece already emitted.
+	pieces := make([]string, 0, len(lines))
+
+	for _, l := range lines {
+		text := strings.TrimSpace(l.Text)
 		p.Bounds = p.Bounds.Union(l.Bounds)
+		if text == "" {
+			continue
+		}
+		if len(pieces) == 0 {
+			pieces = append(pieces, text)
+			continue
+		}
+
+		prev := pieces[len(pieces)-1]
+		joined, sep := joinAcrossLineBreak(cfg, prev, text, &p)
+		pieces[len(pieces)-1] = joined
+		if sep != "" {
+			pieces = append(pieces, sep+text)
+		} else {
+			pieces[len(pieces)-1] += text
+		}
 	}
-	p.Text = strings.TrimSpace(sb.String())
+
+	p.Text = strings.TrimSpace(strings.Join(pieces, ""))
 
 	sizes := make([]float64, 0, len(lines))
 	for _, l := range lines {
@@ -241,6 +288,82 @@ func buildParagraph(lines []Line) Paragraph {
 	}
 	p.Font = best
 	return p
+}
+
+// joinAcrossLineBreak decides how two consecutive lines of a paragraph meet.
+//
+// It returns the previous line's text, possibly with its trailing hyphen
+// removed, and the separator to place before the next line. An empty
+// separator joins the fragments directly.
+//
+// Spec section 4.6 conditions dehyphenation on the previous line ending in
+// U+002D and the next starting lowercase, then asks the patterns whether a
+// break is legal at that boundary. Whichever way that goes the fragments join
+// without a space: a hyphen at a line end is never a word boundary, so
+// "adip- iscing" is wrong even when the hyphen is kept.
+func joinAcrossLineBreak(cfg Config, prev, next string, p *Paragraph) (string, string) {
+	if !strings.HasSuffix(prev, "-") || next == "" || !startsLetter(next) {
+		return prev, " "
+	}
+
+	left := lastToken(strings.TrimSuffix(prev, "-"))
+	right := firstToken(next)
+
+	if cfg.Dehyphenator == nil {
+		// Dehyphenation is off, or no pattern set ships for this language.
+		// Spec 3: --no-dehyphenate preserves the hyphen verbatim.
+		p.HyphensKept++
+		return prev, ""
+	}
+
+	drop, reason := cfg.Dehyphenator.JoinFragments(left, right)
+	if len(p.HyphenDecisions) < maxHyphenDecisions {
+		p.HyphenDecisions = append(p.HyphenDecisions, HyphenDecision{
+			Left: left, Right: right, Dropped: drop, Reason: reason,
+		})
+	}
+	if drop {
+		p.HyphensDropped++
+		return strings.TrimSuffix(prev, "-"), ""
+	}
+	p.HyphensKept++
+	return prev, ""
+}
+
+// maxHyphenDecisions caps the per-paragraph audit trail.
+//
+// Spec section 4.6 asks for every decision to be recorded. A full-length book
+// makes thousands, so the report keeps running counts for all of them and the
+// individual entries only up to this bound, which keeps a --report file
+// readable without losing the aggregate.
+const maxHyphenDecisions = 8
+
+func startsLetter(s string) bool {
+	for _, r := range s {
+		return unicode.IsLetter(r)
+	}
+	return false
+}
+
+// lastToken returns the final whitespace-delimited token.
+func lastToken(s string) string {
+	f := strings.Fields(s)
+	if len(f) == 0 {
+		return ""
+	}
+	return f[len(f)-1]
+}
+
+// firstToken returns the first whitespace-delimited token, stripped of
+// trailing punctuation so the pattern lookup sees a bare word.
+func firstToken(s string) string {
+	f := strings.Fields(s)
+	if len(f) == 0 {
+		return ""
+	}
+	return strings.TrimRightFunc(f[0], func(r rune) bool {
+		return !unicode.IsLetter(r)
+	})
 }
 
 // endsSentence reports whether the text ends with terminal punctuation,

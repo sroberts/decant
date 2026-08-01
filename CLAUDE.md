@@ -8,7 +8,7 @@ decant converts fixed-layout, text-layer PDFs into semantic, reflowable EPUB 3. 
 
 `spec.md` is the authoritative design document — read the relevant section before changing a stage, and update §13 (open/closed decisions, with dates) when a design decision changes. Code comments reference spec sections by number; keep those references accurate when you move logic.
 
-Currently at **M3** complete: text extraction, column detection, heading classification, outline reconciliation, chapter splitting, and image extraction with figures and captions all work end to end and all output passes epubcheck. M4 (furniture removal, dehyphenation, footnotes, lists, blockquotes) is next.
+Currently at **M4** complete: everything but table detection. M5 (tables, plus finishing the report and `probe`) is next.
 
 ## Commands
 
@@ -44,6 +44,7 @@ go run ./cmd/decant meta book.pdf --json
 internal/pdf/        content stream lexer + interpreter, font machinery, doc/xref access
 internal/layout/     column detection, line assembly, block segmentation, figures
 internal/images/     decode, scale, dither, re-encode extracted images
+internal/hyphen/     Liang pattern matching + embedded hyph-utf8 patterns
 internal/epub/       deterministic EPUB 3.3 serialization
 internal/testpdf/    synthetic PDF builder for tests
 cmd/decant/          CLI, thin wrapper over the root package
@@ -67,7 +68,7 @@ Pipeline: `parse → glyphs → lines → blocks → furniture → classify → 
 - **pdfcpu's `Dereference` matches `types.IndirectRef` by value.** Passing the `*IndirectRef` that `NewIndirectRef` returns hands it straight back unresolved, which looks like success and fails much later. Dereference `*types.NewIndirectRef(n, 0)`.
 - **Use `pdfcpu.ExtractImage`, not `RenderImage`.** The latter assumes filter-pipeline preparation has already happened and yields an empty reader on Flate-encoded images.
 - **Never hold a pointer into a slice you are still appending to.** `buildNav` in `render.go` builds its tree from individually allocated nodes for exactly this reason: a reallocation would silently strand every child added through a stale pointer.
-- **Four heuristics are deliberately not in the spec**, all guards against the spec's rule misfiring, all tunable in `Heuristics`. `ColumnMinRows` (8) and `ColumnMinLines` (3) reject a column split the page has too little evidence for — asking whether a band is empty across 60% of rows is meaningless on a four-row title page, which is where the phantom gutters came from. `ColumnMinGlyphRatio` rejects a split leaving a near-empty column. `HeadingMaxWords` stops a long epigraph set slightly large from becoming a heading and splitting the book at it. Say so if you change them.
+- **Four heuristics are deliberately not in the spec**, all guards against the spec's rule misfiring, all tunable in `Heuristics`. `ColumnMinRows` (8) and `ColumnMinLines` (3) reject a column split the page has too little evidence for — asking whether a band is empty across 60% of rows is meaningless on a four-row title page, which is where the phantom gutters came from. `ColumnMinGlyphRatio` rejects a split leaving a near-empty column. `HeadingMaxWords` stops a long epigraph set slightly large from becoming a heading. Blockquotes require two or more lines — without it, a maths textbook's 2,540 display equations all became blockquotes. Footnotes require eight letters of prose — without it, a mis-decoded run like `2 2 2 2 2` satisfies every stated condition. Furniture removal also matches on repeated *position*, because §4.5's text-hash rule assumes a constant running head and catches nothing on a book with per-chapter heads (0 of 107 on GeoTopo). Say so if you change them.
 - **`hhrutter/tiff`, not `x/image/tiff`.** pdfcpu renders CMYK images to TIFF and the upstream decoder rejects that colour model. Same BSD-3 fork pdfcpu itself uses.
 - **Line art is palettized before PNG encoding.** Palettizing is the entire reason spec §4.7 picks PNG on a low colour count; Go's encoder otherwise writes full RGBA, which turned a 255-colour test chart into 1.7 MB where the paletted form is 447 KB.
 - **TeX text fonts get the OT1 encoding** (`internal/pdf/encoding.go`). They are symbolic Type1 programs with no `/Encoding` and no `/ToUnicode`, and sfnt cannot parse Type1 to recover the built-in encoding, so nothing in the PDF says how to read them. Without OT1 every f-ligature and typographic quote in a LaTeX document becomes U+FFFD. `isTeXTextFont` excludes the math families (CMMI, CMSY, CMEX, MSAM…) — they use OML/OMS/OMX and OT1 would be actively wrong. **Math symbol extraction from TeX documents remains unsolved** and is the largest remaining source of decode failures on academic PDFs.
@@ -116,13 +117,13 @@ Fuzzing is not optional — malformed PDFs are a hostile input class and the par
 
 ## Milestones
 
-M1 interpreter + paragraphs (**done**) → M2 segmentation, columns, headings, TOC (**done**) → M3 images → M4 furniture removal, dehyphenation, footnotes, lists → M5 tables, profiles, report, `probe` → M6 API stabilization + TUI integration.
+M1 interpreter + paragraphs (**done**) → M2 segmentation, columns, headings, TOC (**done**) → M3 images (**done**) → M4 furniture, dehyphenation, footnotes, lists (**done**) → M5 tables, profiles, report, `probe` → M6 API stabilization + TUI integration.
 
 Ship M1–M3 before optimizing: tuning layout thresholds against three test files produces overfitted garbage. Tag `v0.x` through M5; the API is unstable until `v1.0.0`.
 
 ## Licensing discipline
 
-decant ships MIT, so vendored `hyph-utf8` hyphenation patterns (M4) must be MIT, BSD, or unrestricted. Drop a language rather than accept renaming or share-alike terms. Record every vendored file's terms in `THIRD_PARTY.md`.
+decant ships MIT, so vendored `hyph-utf8` hyphenation patterns must be MIT, BSD, or unrestricted. **Russian and Swedish are deliberately absent** — their files are LPPL-only, and §4.6 says to drop the language rather than complicate the license, even though §4.6's own language list names them. `TestLPPLLanguagesAreNotShipped` guards this; `THIRD_PARTY.md` records the per-file audit. Adding a language means auditing its license first.
 
 ## Workflow
 

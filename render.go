@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/sroberts/decant/internal/epub"
+	"github.com/sroberts/decant/internal/layout"
 )
 
 // buildChapters groups blocks into chapter files and renders their XHTML.
@@ -46,7 +47,7 @@ func (c *Converter) buildChapters(doc *Document, imgs *imageSet, rep *Report) ([
 					continue
 				}
 				headingRefs = append(headingRefs, headingRef{
-					title: b.Text,
+					title: layout.StripSuperscriptMarks(b.Text),
 					level: b.Level,
 					href:  href + "#" + b.ID,
 				})
@@ -272,10 +273,11 @@ func renderBlocks(blocks []Block, imgs *imageSet) string {
 	first := true
 
 	for _, b := range blocks {
-		text := epub.EscapeXML(b.Text)
+		text := renderInline(b)
 		if strings.TrimSpace(text) == "" && b.Kind != KindFigure {
 			continue
 		}
+		// A heading boundary must not be taken from a non-heading kind.
 
 		switch b.Kind {
 		case KindFigure:
@@ -324,11 +326,25 @@ func renderBlocks(blocks []Block, imgs *imageSet) string {
 			first = true
 
 		case KindCode:
+			// Spec 4.6 preserves leading whitespace in code, which the
+			// stylesheet's pre-wrap honors.
 			fmt.Fprintf(&sb, "<pre><code>%s</code></pre>\n", text)
 			first = true
 
 		case KindQuote:
 			fmt.Fprintf(&sb, "<blockquote><p>%s</p></blockquote>\n", text)
+			first = true
+
+		case KindList:
+			renderList(&sb, b)
+			first = true
+
+		case KindFootnote:
+			// epub:type footnote is what makes a conforming reader show this
+			// as a popup rather than a block of text at the page foot.
+			fmt.Fprintf(&sb,
+				"<aside epub:type=\"footnote\" id=\"%s\">\n  <p>%s</p>\n</aside>\n",
+				epub.EscapeXML(b.ID), text)
 			first = true
 
 		case KindCaption:
@@ -351,11 +367,89 @@ func renderBlocks(blocks []Block, imgs *imageSet) string {
 	return sb.String()
 }
 
+// renderInline escapes a block's text and turns superscript runs into markup.
+//
+// Escaping happens per segment so the emitted tags survive: escaping the
+// whole string first would turn the angle brackets of <sup> into entities.
+// A superscript with a matching footnote becomes a noteref anchor, which is
+// what makes a conforming reader show the note as a popup.
+func renderInline(b Block) string {
+	raw := b.Text
+	if !strings.Contains(raw, layout.SuperscriptOpen) {
+		return epub.EscapeXML(raw)
+	}
+
+	var sb strings.Builder
+	rest := raw
+	for {
+		i := strings.Index(rest, layout.SuperscriptOpen)
+		if i < 0 {
+			sb.WriteString(epub.EscapeXML(rest))
+			break
+		}
+		sb.WriteString(epub.EscapeXML(rest[:i]))
+		rest = rest[i+len(layout.SuperscriptOpen):]
+
+		j := strings.Index(rest, layout.SuperscriptClose)
+		if j < 0 {
+			// Unterminated run; emit what remains as plain text.
+			sb.WriteString(epub.EscapeXML(rest))
+			break
+		}
+		label := rest[:j]
+		rest = rest[j+len(layout.SuperscriptClose):]
+
+		escaped := epub.EscapeXML(label)
+		if id, ok := b.NoteRefs[strings.TrimSpace(label)]; ok {
+			fmt.Fprintf(&sb,
+				`<a epub:type="noteref" href="#%s"><sup>%s</sup></a>`,
+				epub.EscapeXML(id), escaped)
+			continue
+		}
+		fmt.Fprintf(&sb, "<sup>%s</sup>", escaped)
+	}
+	return sb.String()
+}
+
+// renderList emits a list block as ul or ol.
+//
+// Spec section 4.6 infers the start attribute from the first marker, so a
+// list resuming at 7 after an interruption keeps its numbering.
+func renderList(sb *strings.Builder, b Block) {
+	items := b.ListItems
+	if len(items) == 0 {
+		items = strings.Split(b.Text, "\n")
+	}
+
+	if b.ListOrdered {
+		if b.ListStart > 1 {
+			fmt.Fprintf(sb, "<ol start=\"%d\">\n", b.ListStart)
+		} else {
+			sb.WriteString("<ol>\n")
+		}
+	} else {
+		sb.WriteString("<ul>\n")
+	}
+	for _, it := range items {
+		it = strings.TrimSpace(it)
+		if it == "" {
+			continue
+		}
+		fmt.Fprintf(sb, "  <li>%s</li>\n",
+			epub.EscapeXML(layout.StripSuperscriptMarks(it)))
+	}
+	if b.ListOrdered {
+		sb.WriteString("</ol>\n")
+	} else {
+		sb.WriteString("</ul>\n")
+	}
+}
+
 // chapterTitle picks a display title for a chapter group.
 func chapterTitle(blocks []Block, index int, doc *Document) string {
 	for _, b := range blocks {
 		if b.Kind == KindHeading && strings.TrimSpace(b.Text) != "" {
-			return b.Text
+			return layout.StripSuperscriptMarks(b.Text)
 		}
 	}
 	if index == 0 && doc.Title != "" {

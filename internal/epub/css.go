@@ -4,9 +4,7 @@ package epub
 // and rules out fixed widths and embedded fonts: reader defaults should win
 // wherever possible, and CrossPoint's release notes attribute out-of-memory
 // crashes to complex stylesheets.
-const BaseCSS = `html {
-  font-size: 100%;
-}
+const BaseCSS = `html { font-size: 100%; }
 body {
   margin: 0 5%;
   line-height: 1.4;
@@ -22,17 +20,15 @@ h1 { font-size: 1.6em; margin: 1.2em 0 0.6em; }
 h2 { font-size: 1.4em; margin: 1.1em 0 0.5em; }
 h3 { font-size: 1.2em; margin: 1em 0 0.4em; }
 h4, h5, h6 { font-size: 1.05em; margin: 1em 0 0.4em; }
-p {
-  margin: 0;
-  text-indent: 1.2em;
-}
-p.first, h1 + p, h2 + p, h3 + p, h4 + p, h5 + p, h6 + p {
+p { margin: 0; text-indent: 1.2em; }
+p.first, li, figcaption, aside,
+h1 + p, h2 + p, h3 + p, h4 + p, h5 + p, h6 + p {
   text-indent: 0;
 }
-blockquote {
-  margin: 1em 1.5em;
-  text-indent: 0;
-}
+blockquote { margin: 1em 1.5em; text-indent: 0; }
+ul, ol { margin: 0.6em 0; text-align: left; }
+figcaption, aside { font-size: 0.9em; }
+figcaption { text-align: center; }
 pre {
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -45,40 +41,21 @@ figure {
   page-break-inside: avoid;
   break-inside: avoid;
 }
-figcaption {
-  font-size: 0.9em;
-  text-align: center;
-  text-indent: 0;
-}
-img {
-  max-width: 100%;
-  height: auto;
-}
+img { max-width: 100%; height: auto; }
 `
 
 // MinimalCSS strips the decorative rules for the constrained device profiles
 // in spec section 5.
-const MinimalCSS = `body {
-  margin: 0 4%;
-  line-height: 1.35;
-}
-h1, h2, h3, h4, h5, h6 {
-  line-height: 1.2;
-  text-align: left;
-}
-p {
-  margin: 0;
-  text-indent: 1.2em;
-}
-p.first, h1 + p, h2 + p, h3 + p, h4 + p, h5 + p, h6 + p {
+const MinimalCSS = `body { margin: 0 4%; line-height: 1.35; }
+h1, h2, h3, h4, h5, h6 { line-height: 1.2; text-align: left; }
+p { margin: 0; text-indent: 1.2em; }
+p.first, li, figcaption, aside,
+h1 + p, h2 + p, h3 + p, h4 + p, h5 + p, h6 + p {
   text-indent: 0;
 }
-pre {
-  white-space: pre-wrap;
-  text-indent: 0;
-}
-img {
-  max-width: 100%;
-  height: auto;
-}
+blockquote { margin: 1em 1.5em; }
+ul, ol { margin: 0.6em 0; }
+figcaption, aside { font-size: 0.9em; }
+pre { white-space: pre-wrap; text-indent: 0; }
+img { max-width: 100%; height: auto; }
 `

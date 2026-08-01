@@ -12,7 +12,7 @@
     "quality_score": 100,
     "fingerprint_sha": "4e79c6c362302682",
     "fingerprint_head": "p p",
-    "text_sha": "4d9163acf93c335e"
+    "text_sha": "0b2823b9cab72dbd"
   },
   {
     "path": "002-trivial-libre-office-writer/002-trivial-libre-office-writer.pdf",
@@ -125,11 +125,14 @@
     "path": "009-pdflatex-geotopo/GeoTopo-komprimiert.pdf",
     "outcome": "ok",
     "pages": 117,
-    "blocks": 4673,
+    "blocks": 4385,
     "kinds": {
+      "blockquote": 84,
       "figure": 3,
-      "heading": 200,
-      "paragraph": 4470
+      "footnote": 7,
+      "heading": 97,
+      "list": 119,
+      "paragraph": 4075
     },
     "headings": {
       "1": 16,
@@ -137,26 +140,29 @@
       "3": 33,
       "4": 4,
       "5": 1,
-      "6": 144
+      "6": 41
     },
     "chapters": 17,
     "multi_column_pages": 50,
     "decode_failure_bucket": "\u003c5%",
     "quality_score": 61,
     "warnings": 17,
-    "fingerprint_sha": "babc7ed1c78a1114",
-    "fingerprint_head": "h3 h3 p h1 p p h3 p p p p h3 p p p p p p h3 p p h6 p p ...",
-    "text_sha": "4ad89e20fad12d8f"
+    "fingerprint_sha": "71fb6610f09c1d9e",
+    "fingerprint_head": "h3 h3 p h1 p p h3 p p p p h3 p p p p p p h3 p p p list p ...",
+    "text_sha": "4890b76abda68a1a"
   },
   {
     "path": "009-pdflatex-geotopo/GeoTopo.pdf",
     "outcome": "ok",
     "pages": 117,
-    "blocks": 4673,
+    "blocks": 4385,
     "kinds": {
+      "blockquote": 84,
       "figure": 3,
-      "heading": 200,
-      "paragraph": 4470
+      "footnote": 7,
+      "heading": 97,
+      "list": 119,
+      "paragraph": 4075
     },
     "headings": {
       "1": 16,
@@ -164,16 +170,16 @@
       "3": 33,
       "4": 4,
       "5": 1,
-      "6": 144
+      "6": 41
     },
     "chapters": 17,
     "multi_column_pages": 50,
     "decode_failure_bucket": "\u003c5%",
     "quality_score": 61,
     "warnings": 17,
-    "fingerprint_sha": "babc7ed1c78a1114",
-    "fingerprint_head": "h3 h3 p h1 p p h3 p p p p h3 p p p p p p h3 p p h6 p p ...",
-    "text_sha": "4ad89e20fad12d8f"
+    "fingerprint_sha": "71fb6610f09c1d9e",
+    "fingerprint_head": "h3 h3 p h1 p p h3 p p p p h3 p p p p p p h3 p p p list p ...",
+    "text_sha": "4890b76abda68a1a"
   },
   {
     "path": "010-pdflatex-forms/pdflatex-forms.pdf",
@@ -195,10 +201,10 @@
     "path": "011-google-doc-document/google-doc-document.pdf",
     "outcome": "ok",
     "pages": 1,
-    "blocks": 28,
+    "blocks": 25,
     "kinds": {
       "heading": 2,
-      "paragraph": 26
+      "paragraph": 23
     },
     "headings": {
       "1": 1,
@@ -207,9 +213,9 @@
     "chapters": 1,
     "decode_failure_bucket": "none",
     "quality_score": 100,
-    "fingerprint_sha": "54d15ce2cccf2267",
+    "fingerprint_sha": "6a2c2d74977b7c85",
     "fingerprint_head": "h1 p p p p p p p p p p p p p p p h2 p p p p p p p ...",
-    "text_sha": "a7f14035f0c16494"
+    "text_sha": "35abb7b47234e848"
   },
   {
     "path": "012-libreoffice-form/libreoffice-form.pdf",
@@ -448,7 +454,7 @@
     "quality_score": 100,
     "fingerprint_sha": "4e79c6c362302682",
     "fingerprint_head": "p p",
-    "text_sha": "4d9163acf93c335e"
+    "text_sha": "0b2823b9cab72dbd"
   },
   {
     "path": "026-latex-multicolumn/multicolumn.pdf",
@@ -456,8 +462,9 @@
     "pages": 3,
     "blocks": 28,
     "kinds": {
+      "blockquote": 1,
       "heading": 5,
-      "paragraph": 23
+      "paragraph": 22
     },
     "headings": {
       "1": 1,
@@ -469,9 +476,9 @@
     "multi_column_pages": 2,
     "decode_failure_bucket": "none",
     "quality_score": 100,
-    "fingerprint_sha": "44019edac566cdc8",
+    "fingerprint_sha": "8c00d8d4f01c2073",
     "fingerprint_head": "h1 h3 h3 h2 p p p p p p p p p p p p p p p p p p h4 p ...",
-    "text_sha": "9be54ab90d0d0160"
+    "text_sha": "143ec9b9659902f2"
   },
   {
     "path": "027-cropped-rotated-scaled/cropped-rotated-scaled.pdf",

@@ -343,8 +343,13 @@ func TestProfileDefaults(t *testing.T) {
 	opts.Profile = decant.ProfileCrossPoint
 	opts.ApplyProfileDefaults()
 
-	if opts.MaxChunkBytes != 65536 {
-		t.Errorf("crosspoint MaxChunkBytes = %d, want 65536", opts.MaxChunkBytes)
+	// Spec section 13 closed the chunk ceiling on 2026-08-01: CrossPoint
+	// streams XHTML through expat and serializes each page to the SD card as
+	// it completes, so chapter size is not a memory constraint and the
+	// profile keeps the standard 262144. A regression to 65536 would mean
+	// that finding was lost.
+	if opts.MaxChunkBytes != 262144 {
+		t.Errorf("crosspoint MaxChunkBytes = %d, want 262144", opts.MaxChunkBytes)
 	}
 	if opts.ImageMaxWidth != 480 {
 		t.Errorf("crosspoint ImageMaxWidth = %d, want 480", opts.ImageMaxWidth)
@@ -358,6 +363,11 @@ func TestProfileDefaults(t *testing.T) {
 	min.ApplyProfileDefaults()
 	if min.Images != decant.ImagesDrop {
 		t.Errorf("minimal Images = %q, want drop", min.Images)
+	}
+	// Minimal names no device, so no firmware settles it; it stays low for a
+	// reader that might hold a whole chapter in memory.
+	if min.MaxChunkBytes != 65536 {
+		t.Errorf("minimal MaxChunkBytes = %d, want 65536", min.MaxChunkBytes)
 	}
 }
 

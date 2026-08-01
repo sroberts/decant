@@ -446,8 +446,11 @@ type Options struct {
 	// SplitAt selects chapter boundaries. Default SplitAtH1.
 	SplitAt SplitMode
 	// MaxChunkBytes forces a split of oversized XHTML at a paragraph
-	// boundary. Default 262144; the crosspoint and minimal profiles lower it
-	// to 65536.
+	// boundary. Default 262144; the minimal profile lowers it to 65536.
+	//
+	// The crosspoint profile keeps 262144: its firmware streams XHTML rather
+	// than parsing it into memory, so chapter size is not a memory constraint
+	// there. See ApplyProfileDefaults.
 	MaxChunkBytes int
 
 	// KeepHeaders retains running heads and folios. Default false.
@@ -502,10 +505,23 @@ func (o *Options) ApplyProfileDefaults() {
 	case ProfileCrossPoint:
 		o.Images = ImagesGrayscale
 		o.ImageMaxWidth = 480
-		o.MaxChunkBytes = 65536
+		// Deliberately the same as the standard profile. Spec section 5.1
+		// carried 65536 as a guess anchored to the ESP32-C3's ~380 KB of RAM,
+		// on the assumption that a chapter is parsed into memory. Reading the
+		// firmware settled it (spec section 13, closed 2026-08-01): XHTML is
+		// streamed through expat in 1 KB chunks and each page is serialized to
+		// the SD card and freed as it completes, so chapter size never lands
+		// in RAM. The only term that scales with chapter length is a 12-byte
+		// page lookup entry, about 0.9% of the chapter's bytes, which is noise
+		// against the 60 KB of free heap the firmware requires just to decode
+		// a PNG.
+		o.MaxChunkBytes = 262144
 	case ProfileMinimal:
 		o.Images = ImagesDrop
 		o.ImageMaxWidth = 0
+		// Kept low here. Unlike crosspoint this profile names no device, so
+		// there is no firmware to check; a reader that parses a whole chapter
+		// into a DOM is the case it exists to serve.
 		o.MaxChunkBytes = 65536
 	}
 }

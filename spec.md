@@ -233,7 +233,7 @@ CSS stays under 50 lines: relative `em` sizing, no fixed widths, no embedded fon
 |---|---|---|---|
 | Image handling | keep, RGB | 16-level grayscale, JPEG only | drop |
 | `--image-max-width` | 1600 | 480 | n/a |
-| `--max-chunk-bytes` | 262144 | 65536 | 65536 |
+| `--max-chunk-bytes` | 262144 | 262144 | 65536 |
 | Table mode | auto | text | text |
 | TOC depth | unlimited | 2 | 2 |
 | CSS | base | base minus decorative rules | none |
@@ -246,7 +246,7 @@ The `crosspoint` profile targets the Xteink X4 running CrossPoint firmware. Stoc
 | Property | Value | Consequence for decant |
 |---|---|---|
 | Display | 4.3 in E Ink, 220 PPI, 114 × 69 × 5.9 mm body | Panel is **480 × 800**, confirmed by the CrossPoint user guide. Portrait text column is 480 px wide, which sets `--image-max-width`. The X3 is 528 × 792 if that target ever matters |
-| CPU | ESP32-C3, roughly 380 KB usable RAM | XHTML chunk size is the dominant failure mode, not image fidelity |
+| CPU | ESP32-C3, roughly 380 KB usable RAM | Not a constraint on chunk size: the firmware streams XHTML rather than holding it. See the ceiling note below |
 | Image formats | stock firmware: JPG and BMP only | CrossPoint's in-EPUB decoder is unverified and may accept PNG. Assume JPEG until confirmed |
 | Document formats | EPUB and TXT | EPUB 3 with NCX fallback stays correct |
 | Front light | none | No dark-mode or contrast CSS. Assume ambient light |
@@ -262,7 +262,27 @@ The `crosspoint` profile targets the Xteink X4 running CrossPoint firmware. Stoc
 - CrossPoint renders EPUB 2 and 3, handles images and footnotes, and does its own hyphenation and kerning. Its hyphenation is display-time and does not conflict with decant's source-level dehyphenation.
 - The CrossInk fork publishes whole-file guidance: EPUBs under 20 MB work best, files over 50 MB grow slow and memory-sensitive. No per-XHTML byte ceiling appears in any public documentation.
 
-**No published XHTML size ceiling exists.** Neither the hardware spec nor the firmware docs state one. Two ways to settle it: read the section-caching code in `crosspoint-reader/crosspoint-reader`, or measure empirically by generating EPUBs with progressively larger single chapters and finding the failure point. The SDL2 device simulator in the CrossInk fork makes the second approach cheap and scriptable. Until then, 65536 stays a guess anchored to the 380 KB RAM figure, and the 20 MB whole-file target from CrossInk should become a `crosspoint` profile warning threshold.
+**The XHTML size ceiling is not a memory constraint.** Settled by reading `crosspoint-reader/crosspoint-reader`, which shows chapter size never lands in RAM:
+
+- Chapter XHTML is parsed by **expat**, streaming, through a **1 KB** buffer (`ChapterHtmlSlimParser.cpp: PARSE_BUFFER_SIZE`). There is no DOM.
+- Each laid-out page is serialized to `sections/N.bin` and freed as it completes (`Section::onPageComplete`). Builds are incremental (`buildSomeMore`) and resumable across sleep or exit via a partial-file sentinel.
+- The only structure that scales with chapter length is the in-RAM page lookup table: a 12-byte `PageLutEntry` per page, held only while a build runs.
+- No chapter or XHTML size limit appears anywhere in the firmware. The single content-size guard is `MAX_CSS_FILE_SIZE = 128 KB` — **CSS**, which is what the out-of-memory crashes in the release notes were about. decant emits under 1 KB of CSS.
+
+At 480 × 800 the reader fits roughly 40 characters across and 29 lines down, about 1,160 characters per page; decant's XHTML runs about 88% text, so roughly **1,300 XHTML bytes per page**. The lookup table therefore costs about **0.9% of a chapter's byte size**:
+
+| Chunk | Pages | Lookup table |
+|---|---|---|
+| 64 KB | ~50 | 0.6 KB |
+| 256 KB | ~200 | 2.4 KB |
+| 1 MB | ~800 | 9.6 KB |
+| 4 MB | ~3,200 | 38 KB |
+
+For scale, the firmware refuses to decode a PNG below 60 KB of free heap and to retain a font below 40 KB. The lookup table is noise against that until several megabytes. The other hard bound is `uint16_t pageCount`, capping a section at 65,535 pages, near 85 MB.
+
+The real argument for keeping chapters modest is **cache rebuild cost**, not memory: the section file format has moved v28 through v35, and each bump invalidates caches, so a reader re-lays-out whatever section it is in. 262144 puts that at roughly 200 pages, which rebuilds quickly.
+
+The 20 MB whole-file target from CrossInk is a separate, still-useful `crosspoint` warning threshold.
 
 ## 6. Scanned PDF Handling
 
@@ -369,11 +389,11 @@ GitHub Flow throughout: branch off `main` per milestone or fix, commit, push, op
 ## 13. Open Decisions
 
 1. **Vector graphics.** Charts drawn as paths currently vanish. Rasterizing arbitrary vector regions requires a rendering engine and pushes the project scope substantially.
-2. **CrossPoint XHTML size ceiling.** Panel geometry is now settled; this is the last profile unknown. Undocumented in both hardware and firmware sources. Settle by reading the section-caching code or by binary-searching the failure point in the simulator. Blocks locking `--max-chunk-bytes`.
-3. **CrossPoint in-EPUB image formats.** Stock firmware is JPG and BMP; CrossPoint decodes PNG for sleep screens, so the EPUB path may differ. Determines whether the profile can keep PNG for line art.
+2. **CrossPoint in-EPUB image formats.** Stock firmware is JPG and BMP; CrossPoint decodes PNG for sleep screens, so the EPUB path may differ. Determines whether the profile can keep PNG for line art.
 
 **Closed:**
 
+- **CrossPoint XHTML size ceiling** (2026-08-01): not a memory constraint, and `--max-chunk-bytes` for the `crosspoint` profile is therefore 262144, the same as `standard`. Settled by reading the firmware rather than measuring: XHTML streams through expat in 1 KB chunks and pages are serialized to the SD card as they complete, so only a 12-byte-per-page lookup table scales with chapter length, about 0.9% of chapter bytes. The out-of-memory crashes in the release notes were the CSS parser, now guarded at 128 KB; decant emits under 1 KB of CSS. See section 5.1. The binding consideration is cache rebuild cost after a section-format bump, not RAM.
 - **Name, module path, license** (2026-08-01): `decant`, at `github.com/sroberts/decant`, MIT. Library and CLI ship from one repo.
 - **Encryption** (2026-08-01): out of scope for v1. Detect and exit 3.
 - **Dehyphenation approach** (2026-08-01): TeX hyphenation patterns via Liang's algorithm. No vendored wordlist. See section 4.6.

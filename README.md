@@ -50,16 +50,21 @@ path.
 |---|---|---|---|
 | Images | keep, RGB | 16-level grayscale, JPEG | drop |
 | Image max width | 1600 | 480 | n/a |
-| Max chunk bytes | 262144 | 65536 | 65536 |
+| Max chunk bytes | 262144 | 262144 | 65536 |
 | Table mode | auto | text | text |
 | TOC depth | unlimited | 2 | 2 |
 | CSS | base | reduced | none |
 
 `crosspoint` targets an Xteink X4 running CrossPoint firmware: a 480x800 E Ink
-panel driven by an ESP32-C3 with roughly 380 KB of usable RAM. On that
-hardware the XHTML chunk size is the dominant failure mode, not image
-fidelity. The 65536 byte default is a working guess anchored to the RAM
-figure; no public documentation states a real ceiling.
+panel driven by an ESP32-C3 with roughly 380 KB of usable RAM.
+
+Chapter size is **not** a memory constraint there, contrary to the obvious
+guess. The firmware streams XHTML through expat in 1 KB chunks and serializes
+each laid-out page to the SD card as it completes, so a chapter never lands in
+RAM; only a 12-byte-per-page lookup table scales with its length, about 0.9%
+of the chapter's bytes. The out-of-memory crashes in its release notes were
+the CSS parser, now guarded at 128 KB, and decant emits under 1 KB of CSS. The
+profile therefore keeps the standard 256 KB chunk. See spec section 5.1.
 
 ### Exit codes
 

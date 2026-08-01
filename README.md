@@ -7,10 +7,11 @@ order. decant is a single static Go binary that recovers the second from the
 first, plus an importable library so a TUI can drive the same code path
 without shelling out.
 
-Status: **M2**. Text extraction, column detection, paragraph reconstruction,
-heading classification, and outline-driven chapter splitting all work end to
-end, and every output passes `epubcheck` with zero errors. Images and tables
-are not implemented yet; see [Milestones](#milestones).
+Status: **M3**. Text extraction, column detection, paragraph reconstruction,
+heading classification, outline-driven chapter splitting, and image
+extraction with figures and captions all work end to end, and every output
+passes `epubcheck` with zero errors. Tables are not implemented yet; see
+[Milestones](#milestones).
 
 MIT licensed. Full design in [`spec.md`](spec.md).
 
@@ -134,6 +135,11 @@ model at any stage.
 - Paragraph reconstruction from indent, leading, and terminal punctuation
 - Heading classification against a document-wide body font, ranked to h1-h6
 - PDF outline reconciliation, hierarchical TOC, chapter splitting at headings
+- Image extraction with placement from the CTM, deduplication by pixel
+  digest, Catmull-Rom scaling, JPEG/paletted-PNG selection by colour count,
+  and DCT passthrough when nothing needs the pixels
+- Background and watermark rejection, size floors, figures placed in reading
+  order, caption binding, and grayscale dithering for the crosspoint profile
 - Deterministic EPUB 3.3 output with an EPUB 2 NCX fallback
 - Encrypted, scanned, and malformed input detection with distinct exit codes
 - `convert`, `probe`, `meta`, and `version` subcommands
@@ -144,14 +150,18 @@ model at any stage.
 print a notice naming the milestone that implements them. `--jobs` is
 accepted but page processing is currently sequential.
 
+JPEG 2000 and JBIG2 images drop with a diagnostic: neither has a pure-Go
+decoder, and spec principle 2 rules out cgo. Inline (`BI`) images have their
+position recorded for scan detection but are not extracted.
+
 ## Milestones
 
 | | Scope | Status |
 |---|---|---|
 | M1 | Parse, glyph extraction, line assembly, plain paragraphs | done |
 | M2 | Block segmentation, column detection, headings, outline TOC, chapter splitting | done |
-| M3 | Image extraction, placement, re-encoding, figures and captions | next |
-| M4 | Furniture removal, dehyphenation, footnotes, lists, blockquotes | |
+| M3 | Image extraction, placement, re-encoding, figures and captions | done |
+| M4 | Furniture removal, dehyphenation, footnotes, lists, blockquotes | next |
 | M5 | Table detection, device profiles, conversion report, `probe` | partial |
 | M6 | Public API stabilization and CrossPoint TUI integration | |
 
@@ -191,7 +201,7 @@ and structure and text digests. It is the regression gate, and the tool for
 judging whether a heuristic change helps or hurts across real documents
 rather than across three fixtures.
 
-Current state: 25 files convert (23 with zero decode failures), 7 are
+Current state: 27 files convert (25 with zero decode failures), 5 are
 correctly rejected as image-only with no text layer, 1 is correctly rejected
 as encrypted, and 1 damaged file is not yet recoverable.
 
@@ -213,8 +223,9 @@ go test -run TestDeterministicOutput ./...
 | Package | License | Role |
 |---|---|---|
 | `github.com/pdfcpu/pdfcpu` | Apache-2.0 | xref parsing, object model |
-| `golang.org/x/image` | BSD-3 | `font/sfnt` metrics and cmap |
+| `golang.org/x/image` | BSD-3 | `font/sfnt` metrics, Catmull-Rom resampling |
 | `golang.org/x/text` | BSD-3 | Unicode normalization |
+| `github.com/hhrutter/tiff` | BSD-3 | CMYK TIFF decode, which x/image rejects |
 
 `unidoc/unipdf` (AGPL or paid), `go-fitz` and other MuPDF bindings (cgo plus
 AGPL), and `rsc.io/pdf` (no font or positioning support) are all ruled out by

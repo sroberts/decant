@@ -90,6 +90,49 @@ type Config struct {
 	// evidence than the glyph share: a real column carries many lines, while
 	// a ragged right edge or a bulleted list carries none on one side.
 	ColumnMinLines int
+
+	// --- images, spec 4.7 ---
+
+	// BackgroundCoverRatio is the share of the page an image must cover, when
+	// painted beneath the text, to be dropped as a background or watermark.
+	// Spec 4.7: 0.95.
+	BackgroundCoverRatio float64
+
+	// MinImagePoints is the smallest edge, in points, an image may have
+	// before it is dropped. Spec 4.7 states 16 pixels; placement is measured
+	// in points, which at the 72 dpi of PDF user space is the same number.
+	MinImagePoints float64
+
+	// MinImageAreaRatio is the share of page area below which an image is
+	// dropped. Spec 4.7: 0.02.
+	MinImageAreaRatio float64
+
+	// KeepSmallImages retains images the size rules would drop. Spec 3:
+	// --keep-small-images.
+	KeepSmallImages bool
+
+	// KeepInlineImages places inline (BI) images. They are recorded but not
+	// extracted, so this is off; the flag exists to make that visible rather
+	// than silent.
+	KeepInlineImages bool
+
+	// InlineImageWidthRatio is the fraction of the text column width below
+	// which an image inside a paragraph flows inline. Spec 4.7: 0.4.
+	InlineImageWidthRatio float64
+
+	// CaptionGapLines is how many line heights a caption may sit from its
+	// figure. Spec 4.6: 1.5.
+	CaptionGapLines float64
+
+	// CaptionSizeRatio is how far below the body font a caption is set.
+	// Spec 4.6 says "size below body"; 0.05 gives a small tolerance so
+	// rounding does not defeat the test.
+	CaptionSizeRatio float64
+
+	// CaptionOverlapRatio is the horizontal overlap a block must share with
+	// an image to be considered its caption. Not in the spec: without it a
+	// sidebar level with a figure binds to it as a caption.
+	CaptionOverlapRatio float64
 }
 
 // DefaultConfig returns the documented defaults from spec section 4.
@@ -112,5 +155,13 @@ func DefaultConfig() Config {
 		ColumnMinGlyphRatio:  0.1,
 		ColumnMinRows:        8,
 		ColumnMinLines:       3,
+
+		BackgroundCoverRatio:  0.95,
+		MinImagePoints:        16,
+		MinImageAreaRatio:     0.02,
+		InlineImageWidthRatio: 0.4,
+		CaptionGapLines:       1.5,
+		CaptionSizeRatio:      0.05,
+		CaptionOverlapRatio:   0.3,
 	}
 }

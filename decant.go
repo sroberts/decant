@@ -46,6 +46,7 @@ func New(opts Options) (*Converter, error) {
 	}
 	cfg := layoutConfig(opts.Heuristics)
 	cfg.Columns = opts.Columns
+	cfg.KeepSmallImages = opts.KeepSmallImages
 	return &Converter{opts: opts, cfg: cfg}, nil
 }
 
@@ -73,6 +74,14 @@ func layoutConfig(h Heuristics) layout.Config {
 		ColumnMinGlyphRatio:  h.ColumnMinGlyphRatio,
 		ColumnMinRows:        h.ColumnMinRows,
 		ColumnMinLines:       h.ColumnMinLines,
+
+		BackgroundCoverRatio:  h.BackgroundCoverRatio,
+		MinImagePoints:        h.MinImagePoints,
+		MinImageAreaRatio:     h.MinImageAreaRatio,
+		InlineImageWidthRatio: h.InlineImageWidthRatio,
+		CaptionGapLines:       h.CaptionGapLines,
+		CaptionSizeRatio:      h.CaptionSizeRatio,
+		CaptionOverlapRatio:   h.CaptionOverlapRatio,
 	}
 }
 
@@ -142,13 +151,15 @@ func (c *Converter) Analyze(ctx context.Context, r io.ReaderAt, size int64) (*Do
 	// is computed from.
 	var feats []blockFeatures
 	hist := fontHistogram{}
+	imgs := newImageSet()
 
 	for _, idx := range pages {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		c.analyzePage(src, idx, cache, doc, &feats, hist, entries, entriesByPage[idx], rep)
+		c.analyzePage(src, idx, cache, doc, &feats, hist, entries, entriesByPage[idx], imgs, rep)
 	}
+	doc.Images = imgs.sorted()
 
 	// Stage 6 runs document-wide: the body font is a whole-document statistic
 	// and the outline spans pages.
@@ -181,6 +192,7 @@ func (c *Converter) analyzePage(
 	hist fontHistogram,
 	entries []outlineEntry,
 	entryIdx []int,
+	imgs *imageSet,
 	rep *Report,
 ) {
 	m := PageMetrics{Page: idx}
@@ -253,7 +265,39 @@ func (c *Converter) analyzePage(
 		hist.add(family, l.Size, bold, len(l.Glyphs))
 	}
 
-	for _, b := range pl.Blocks {
+	// Figures are placed before paragraphs are emitted so a caption block can
+	// be consumed by its figure rather than appearing twice.
+	bodySize := medianLineSize(pl.Lines)
+	figs, captionBlocks := layout.PlaceFigures(
+		c.cfg, pl, pc.Images, page.Width, page.Height, bodySize)
+	imageIDs := c.collectPageImages(src, idx, figureDraws(figs), imgs, rep)
+
+	if n := len(pc.Images) - len(figs); n > 0 {
+		rep.info("images", idx, fmt.Sprintf(
+			"dropped %d image(s) as background, watermark, or too small", n))
+	}
+	m.Images = len(figs)
+
+	// Emit paragraphs in reading order, then insert each figure at the point
+	// its position implies.
+	//
+	// Paragraph order is never re-sorted. It already encodes the column
+	// reading order established upstream, and sorting the combined list by
+	// vertical position would interleave the columns of a two-column page,
+	// which is precisely the scrambling stage 4 exists to prevent.
+	type item struct {
+		block Block
+		feat  blockFeatures
+		// srcBlock is the index in pl.Blocks this came from, which figure
+		// insertion compares against.
+		srcBlock int
+	}
+	var items []item
+
+	for bi, b := range pl.Blocks {
+		if captionBlocks[bi] {
+			continue
+		}
 		for _, p := range layout.Reconstruct(c.cfg, b) {
 			text := strings.TrimSpace(p.Text)
 			if text == "" {
@@ -263,29 +307,126 @@ func (c *Converter) analyzePage(
 			if p.Font != nil {
 				family, bold = p.Font.Family, p.Font.Bold
 			}
-			doc.Blocks = append(doc.Blocks, Block{
-				// Kind and Level are filled in by classify once every page
-				// has contributed to the font histogram.
-				Kind:   KindParagraph,
-				Text:   text,
-				Page:   idx,
-				Bounds: toRect(p.Bounds),
-				Size:   p.Size,
-				Font:   family,
-			})
-			*feats = append(*feats, blockFeatures{
-				size:      p.Size,
-				family:    family,
-				bold:      bold,
-				words:     countWords(text),
-				terminal:  endsWithTerminal(text),
-				fullWidth: b.Column == -1,
-				lines:     len(p.Lines),
+			items = append(items, item{
+				srcBlock: bi,
+				block: Block{
+					// Kind and Level are filled in by classify once every
+					// page has contributed to the font histogram.
+					Kind:   KindParagraph,
+					Text:   text,
+					Page:   idx,
+					Bounds: toRect(p.Bounds),
+					Size:   p.Size,
+					Font:   family,
+				},
+				feat: blockFeatures{
+					size:      p.Size,
+					family:    family,
+					bold:      bold,
+					words:     countWords(text),
+					terminal:  endsWithTerminal(text),
+					fullWidth: b.Column == -1,
+					lines:     len(p.Lines),
+				},
 			})
 		}
 	}
 
+	for _, f := range figs {
+		id, ok := imageIDs[f.Draw.Order]
+		if !ok {
+			continue
+		}
+		fb := item{
+			srcBlock: -1,
+			block: Block{
+				Kind:        KindFigure,
+				Text:        f.Caption,
+				Caption:     f.Caption,
+				ImageID:     id,
+				InlineImage: f.Inline,
+				Page:        idx,
+				Bounds:      toRect(f.Bounds),
+			},
+			feat: blockFeatures{isFigure: true},
+		}
+		srcs := make([]int, len(items))
+		for i, it := range items {
+			srcs[i] = it.srcBlock
+		}
+		at := figureInsertIndex(srcs, pl.Blocks, f)
+		items = append(items, item{})
+		copy(items[at+1:], items[at:])
+		items[at] = fb
+	}
+
+	for _, it := range items {
+		doc.Blocks = append(doc.Blocks, it.block)
+		*feats = append(*feats, it.feat)
+	}
+
 	rep.Pages = append(rep.Pages, m)
+}
+
+// figureInsertIndex finds where a figure belongs in an already-ordered
+// sequence of emitted items.
+//
+// srcBlocks holds each item's source block index, or -1 for an item that came
+// from an earlier figure. The scan returns the position of the first item that
+// comes after the figure on the page, comparing within a column rather than
+// across the page width: a block in a later column always follows, and a block
+// in the same column follows when it starts lower down. Anything else keeps
+// its place, so paragraph order is untouched.
+func figureInsertIndex(srcBlocks []int, blocks []layout.Block, f layout.Figure) int {
+	for i, bi := range srcBlocks {
+		if bi < 0 || bi >= len(blocks) {
+			continue
+		}
+		b := blocks[bi]
+		switch {
+		case b.Column == f.Column:
+			if b.Bounds.MinY > f.Bounds.MinY {
+				return i
+			}
+		case f.Column == -1 || b.Column == -1:
+			// One of the two spans the gutters, so they share a single
+			// vertical sequence.
+			if b.Bounds.MinY > f.Bounds.MinY {
+				return i
+			}
+		case b.Column > f.Column:
+			return i
+		}
+	}
+	return len(srcBlocks)
+}
+
+// figureDraws extracts the image placements from a figure list.
+func figureDraws(figs []layout.Figure) []pdf.ImageDraw {
+	out := make([]pdf.ImageDraw, 0, len(figs))
+	for _, f := range figs {
+		out = append(out, f.Draw)
+	}
+	return out
+}
+
+// medianLineSize returns the median line size on a page, used as the local
+// body size for caption detection before the document-wide body font exists.
+func medianLineSize(lines []layout.Line) float64 {
+	if len(lines) == 0 {
+		return 0
+	}
+	v := make([]float64, 0, len(lines))
+	for _, l := range lines {
+		if l.Size > 0 {
+			v = append(v, l.Size)
+		}
+	}
+	if len(v) == 0 {
+		return 0
+	}
+	sort.Float64s(v)
+	return v[len(v)/2]
 }
 
 // detectScanned implements the classifier in spec section 6: a document is a
@@ -293,10 +434,9 @@ func (c *Converter) analyzePage(
 // page-covering images. Both conditions are required, which keeps it from
 // misfiring on an image-heavy art book with sparse captions.
 //
-// Image coverage measurement needs the CTM at draw time, which arrives with
-// image extraction in M3. Until then the image test is the weaker "page
-// references an image XObject", so the glyph-count condition carries the
-// decision.
+// Coverage is measured from the placement rectangles the interpreter records,
+// so "covered by a full-page image" means exactly that rather than merely
+// "references an image".
 func (c *Converter) detectScanned(ctx context.Context, src *pdf.Document, pages []int, cache map[int]*pdf.PageContent, rep *Report) error {
 	sampleSize := c.opts.Heuristics.ScanSamplePages
 	if sampleSize <= 0 {
@@ -329,7 +469,8 @@ func (c *Converter) detectScanned(ctx context.Context, src *pdf.Document, pages 
 		}
 		counts = append(counts, visible)
 
-		if src.HasImages(page) {
+		if pageMostlyImage(pc.Images, page.Width, page.Height,
+			c.opts.Heuristics.ScanImageCoverRatio) {
 			imaged++
 		}
 	}
@@ -363,6 +504,51 @@ func (c *Converter) detectScanned(ctx context.Context, src *pdf.Document, pages 
 }
 
 // evenSample picks up to n indices spread evenly through pages.
+// pageMostlyImage reports whether images cover at least cover of the page.
+//
+// Overlapping placements are unioned rather than summed: a scan tiled as
+// several strips would otherwise report several hundred percent coverage,
+// and a page with many small figures would falsely reach the threshold.
+func pageMostlyImage(draws []pdf.ImageDraw, w, h, cover float64) bool {
+	if len(draws) == 0 || w <= 0 || h <= 0 {
+		return false
+	}
+	// A coarse occupancy grid is enough for a threshold test and avoids a
+	// full rectangle-union computation.
+	const grid = 32
+	var cells [grid][grid]bool
+	cw, ch := w/grid, h/grid
+
+	for _, d := range draws {
+		r := d.Rect
+		x0 := int(math.Floor(r.MinX / cw))
+		x1 := int(math.Ceil(r.MaxX / cw))
+		y0 := int(math.Floor(r.MinY / ch))
+		y1 := int(math.Ceil(r.MaxY / ch))
+		for y := y0; y < y1; y++ {
+			if y < 0 || y >= grid {
+				continue
+			}
+			for x := x0; x < x1; x++ {
+				if x < 0 || x >= grid {
+					continue
+				}
+				cells[y][x] = true
+			}
+		}
+	}
+
+	covered := 0
+	for y := 0; y < grid; y++ {
+		for x := 0; x < grid; x++ {
+			if cells[y][x] {
+				covered++
+			}
+		}
+	}
+	return float64(covered)/float64(grid*grid) >= cover
+}
+
 func evenSample(pages []int, n int) []int {
 	if len(pages) <= n {
 		out := make([]int, len(pages))
@@ -447,7 +633,12 @@ func (c *Converter) Write(ctx context.Context, doc *Document, w io.Writer) (*Rep
 	}
 	rep.Source = doc.Source
 
-	chapters, nav := c.buildChapters(doc, rep)
+	// Rebuild the lookup from the document, which a caller may have edited
+	// between Analyze and Write.
+	imgs := newImageSet()
+	imgs.images = append(imgs.images, doc.Images...)
+
+	chapters, nav := c.buildChapters(doc, imgs, rep)
 	if len(chapters) == 0 {
 		return rep, fmt.Errorf("nothing to write: document produced no content")
 	}
@@ -472,6 +663,18 @@ func (c *Converter) Write(ctx context.Context, doc *Document, w io.Writer) (*Rep
 	}
 	if doc.Author != "" {
 		book.Authors = []string{doc.Author}
+	}
+	for _, img := range doc.Images {
+		if !blockReferences(doc.Blocks, img.ID) {
+			// A caller removed the figure; do not ship an orphan, which
+			// epubcheck reports as an unreferenced manifest item.
+			continue
+		}
+		book.Images = append(book.Images, epub.Image{
+			ID: img.ID, Ext: img.Ext, MediaType: img.MediaType, Data: img.Data,
+		})
+		rep.ImagesPlaced++
+		rep.ImageBytes += len(img.Data)
 	}
 
 	cw := &countingWriter{w: w}
@@ -563,6 +766,16 @@ func convertOutline(items []pdf.OutlineItem) []OutlineItem {
 
 func toRect(r pdf.Rect) Rect {
 	return Rect{MinX: r.MinX, MinY: r.MinY, MaxX: r.MaxX, MaxY: r.MaxY}
+}
+
+// blockReferences reports whether any block still carries this image.
+func blockReferences(blocks []Block, id string) bool {
+	for _, b := range blocks {
+		if b.Kind == KindFigure && b.ImageID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func fontName(f *pdf.Font) string {

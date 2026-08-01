@@ -57,6 +57,15 @@ type Block struct {
 	Size float64
 	// Font is the block's dominant font family name.
 	Font string
+
+	// ImageID names the image a figure block carries, matching Document.Images.
+	// Empty for every other kind.
+	ImageID string
+	// Caption is a figure's caption text, empty when it has none.
+	Caption string
+	// InlineImage marks a figure narrow enough, and inside a paragraph, to
+	// flow in the text rather than stand as a block. Spec 4.7.
+	InlineImage bool
 }
 
 // Rect is an axis-aligned rectangle in page space, with y increasing
@@ -100,6 +109,10 @@ type Document struct {
 
 	// Outline is the PDF bookmark tree, empty when the document has none.
 	Outline []OutlineItem
+
+	// Images are the pictures carried into the EPUB, referenced by
+	// Block.ImageID.
+	Images []Image
 
 	// PageCount is the number of pages in the source document, before any
 	// page range applies.

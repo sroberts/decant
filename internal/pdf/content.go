@@ -48,6 +48,7 @@ type interpreter struct {
 	tm, tlm Matrix
 
 	glyphs []Glyph
+	images []ImageDraw
 
 	// fontTable is the per-page list FontID indexes into.
 	fontTable []*Font
@@ -61,12 +62,48 @@ type interpreter struct {
 type PageContent struct {
 	Glyphs []Glyph
 	Fonts  []*Font
+	// Images are the image XObjects drawn on the page, in draw order, with
+	// the placement rectangle taken from the CTM at draw time.
+	Images []ImageDraw
 	// Truncated reports that the glyph cap was hit and output is incomplete.
 	Truncated bool
 	// Recovered reports that interpretation aborted on a parser panic and
 	// the page's text is incomplete or absent.
 	Recovered bool
 }
+
+// ImageDraw is one image painted on a page.
+//
+// Spec section 4.7 needs the placement rectangle, which exists only at draw
+// time: a PDF image XObject is always the unit square, and the CTM in force
+// when Do executes is what gives it a size and position on the page.
+type ImageDraw struct {
+	// ObjNr is the image XObject's object number, and the key images are
+	// deduplicated by. Zero for a direct or inline image.
+	ObjNr int
+	// Name is the resource dictionary key.
+	Name string
+	// Rect is the placement rectangle in page space.
+	Rect Rect
+	// Rotation is the placement angle in degrees.
+	Rotation float64
+	// GlyphsBefore is how many glyphs had been emitted when this image was
+	// drawn. Zero on a page that also carries text identifies a background
+	// or watermark painted beneath it.
+	GlyphsBefore int
+	// Order is the draw index within the page, which keeps sorting stable
+	// when two images share a position.
+	Order int
+	// Inline marks a BI/ID/EI inline image. Its placement is recorded but its
+	// data is not extracted.
+	Inline bool
+}
+
+// Width returns the placement width in points.
+func (d ImageDraw) Width() float64 { return d.Rect.Width() }
+
+// Height returns the placement height in points.
+func (d ImageDraw) Height() float64 { return d.Rect.Height() }
 
 // FontCache memoizes font loading across pages of one document. Fonts are
 // routinely shared by every page, and rebuilding a CMap per page dominates
@@ -94,6 +131,7 @@ func Interpret(xref *model.XRefTable, fc *FontCache, content []byte, res types.D
 	return &PageContent{
 		Glyphs:    ip.glyphs,
 		Fonts:     ip.fontTable,
+		Images:    ip.images,
 		Truncated: ip.truncated,
 	}
 }
@@ -253,7 +291,10 @@ func (ip *interpreter) exec(op string, args []object, res types.Dict, depth int,
 			ip.doXObject(args[len(args)-1].name(), res, depth)
 		}
 	case "BI":
-		// Inline image. The payload is binary and not tokenizable.
+		// Inline image. The payload is binary and not tokenizable, so only
+		// its placement is recorded; spec section 4.7 extracts image
+		// XObjects, and inline images are small by construction.
+		ip.recordImage(0, "", true)
 		l.skipInlineImage()
 	}
 }
@@ -452,8 +493,46 @@ func (ip *interpreter) showText(s []byte) {
 	}
 }
 
-// doXObject recurses into a Form XObject. Image XObjects are ignored here;
-// image extraction is a separate stage.
+// maxImagesPerPage bounds image recording so a hostile content stream cannot
+// exhaust memory by repeating Do.
+const maxImagesPerPage = 4096
+
+// recordImage captures an image's placement from the current CTM.
+//
+// An image XObject occupies the unit square in its own space, so the CTM at
+// draw time is the entire placement: transforming the unit square's corners
+// and taking their bounding box gives the rectangle on the page.
+func (ip *interpreter) recordImage(objNr int, name string, inline bool) {
+	if len(ip.images) >= maxImagesPerPage {
+		return
+	}
+	m := ip.gs.ctm
+
+	var r Rect
+	first := true
+	for _, c := range [4][2]float64{{0, 0}, {1, 0}, {0, 1}, {1, 1}} {
+		x, y := m.Apply(c[0], c[1])
+		box := Rect{MinX: x, MinY: y, MaxX: x, MaxY: y}
+		if first {
+			r, first = box, false
+			continue
+		}
+		r = r.Union(box)
+	}
+
+	ip.images = append(ip.images, ImageDraw{
+		ObjNr:        objNr,
+		Name:         name,
+		Rect:         r,
+		Rotation:     m.Rotation(),
+		GlyphsBefore: len(ip.glyphs),
+		Order:        len(ip.images),
+		Inline:       inline,
+	})
+}
+
+// doXObject dispatches an XObject reference: an image records its placement,
+// a form recurses.
 func (ip *interpreter) doXObject(name string, res types.Dict, depth int) {
 	if name == "" || res == nil || depth >= maxFormDepth {
 		return
@@ -468,6 +547,15 @@ func (ip *interpreter) doXObject(name string, res types.Dict, depth int) {
 	}
 	sd, ok := o.(types.StreamDict)
 	if !ok {
+		return
+	}
+
+	if nameOf(sd.Dict, "Subtype") == "Image" {
+		objNr := 0
+		if ind, ok := xobjs[name].(types.IndirectRef); ok {
+			objNr = ind.ObjectNumber.Value()
+		}
+		ip.recordImage(objNr, name, false)
 		return
 	}
 	if nameOf(sd.Dict, "Subtype") != "Form" {

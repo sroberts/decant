@@ -25,6 +25,9 @@ type blockFeatures struct {
 	// outlineForced marks a block whose level came from the PDF outline,
 	// which is authoritative and must not be overwritten by inference.
 	outlineForced bool
+	// isFigure marks a block that carries an image rather than text, which
+	// classification leaves alone.
+	isFigure bool
 }
 
 // fontKey identifies a typographic style for the body font computation.
@@ -103,6 +106,9 @@ func (c *Converter) classify(blocks []Block, feats []blockFeatures, hist fontHis
 	// First pass: decide which blocks are headings.
 	isHeading := make([]bool, len(blocks))
 	for i := range blocks {
+		if feats[i].isFigure {
+			continue
+		}
 		if feats[i].outlineForced {
 			isHeading[i] = true
 			continue
@@ -116,6 +122,9 @@ func (c *Converter) classify(blocks []Block, feats []blockFeatures, hist fontHis
 
 	headings := 0
 	for i := range blocks {
+		if feats[i].isFigure {
+			continue
+		}
 		if !isHeading[i] {
 			blocks[i].Kind = KindParagraph
 			blocks[i].Level = 0
@@ -269,7 +278,7 @@ func reconcileOutline(blocks []Block, feats []blockFeatures, entries []outlineEn
 		best := -1
 		bestDist := math.Inf(1)
 		for _, i := range candidates {
-			if used[i] {
+			if used[i] || feats[i].isFigure {
 				continue
 			}
 			// Distance from the destination point to the block's vertical

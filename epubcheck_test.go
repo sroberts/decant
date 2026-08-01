@@ -101,6 +101,26 @@ func TestEPUBCheckValidation(t *testing.T) {
 			opts: defaultOpts,
 			pdf:  outlineDoc,
 		},
+		{
+			name: "figures",
+			opts: defaultOpts,
+			pdf:  figureDoc,
+		},
+		{
+			name: "figures-crosspoint",
+			opts: func() decant.Options {
+				o := defaultOpts()
+				o.Profile = decant.ProfileCrossPoint
+				o.ApplyProfileDefaults()
+				return o
+			},
+			pdf: figureDoc,
+		},
+		{
+			name: "figure-with-caption",
+			opts: defaultOpts,
+			pdf:  captionDoc,
+		},
 	}
 
 	for _, c := range cases {
@@ -210,5 +230,22 @@ func outlineDoc() []byte {
 			"long so it reads as body text.",
 		}})).
 		AddNestedBookmark("Chapter One", 0, 720, "Section 1.1", 1, 720).
+		Build()
+}
+
+// captionDoc is an image with a labelled caption beneath it.
+func captionDoc() []byte {
+	body := testpdf.TextPage("F1", 12, 72, 720, 15, []string{
+		"Body text above the figure that runs across a couple of lines",
+		"so the page has genuine prose in it.",
+	})
+	draw := testpdf.DrawImage("Im1", 150, 450, 250, 180)
+	caption := testpdf.TextPage("F1", 9, 150, 435, 11, []string{
+		"Figure 1: A caption describing the image above it.",
+	})
+	return testpdf.New().
+		SetInfo("Title", "Captioned Figure").
+		AddImage("Im1", 50, 36, testpdf.GradientRGB(50, 36)).
+		AddPage(612, 792, body+draw+caption).
 		Build()
 }

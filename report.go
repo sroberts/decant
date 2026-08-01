@@ -40,6 +40,9 @@ type PageMetrics struct {
 	Blocks int `json:"blocks"`
 	// Columns is the number of text columns detected on the page.
 	Columns int `json:"columns"`
+	// Images is the number of images placed from the page, after the drop
+	// rules in spec section 4.7.
+	Images int `json:"images"`
 	// RotatedDropped counts rotated runs discarded.
 	RotatedDropped int `json:"rotated_dropped"`
 	// UsedInvisibleText marks a page whose only text was a mode-3 layer,
@@ -76,6 +79,11 @@ type Report struct {
 	BodyFont string `json:"body_font,omitempty"`
 	// MultiColumnPages counts pages where more than one column was detected.
 	MultiColumnPages int `json:"multi_column_pages"`
+	// ImagesPlaced counts distinct images carried into the EPUB, after
+	// deduplication.
+	ImagesPlaced int `json:"images_placed"`
+	// ImageBytes is the total encoded size of those images.
+	ImageBytes int `json:"image_bytes"`
 	// Chapters is the number of XHTML files written.
 	Chapters int `json:"chapters"`
 	// OutputBytes is the size of the EPUB.
@@ -169,16 +177,18 @@ func (r *Report) Finish() {
 	// the score on its own.
 	score -= math.Min(20, float64(r.Warnings())*2)
 
-	// A document that produced no paragraphs at all is not usable output,
-	// whatever else went right.
-	if r.Blocks[KindParagraph] == 0 {
+	// A document that produced no content at all is not usable output,
+	// whatever else went right. Figures count: an image-only PDF converts to
+	// an image-only EPUB, and penalizing it for having no prose would flag a
+	// faithful conversion as a bad one.
+	if r.Blocks[KindParagraph] == 0 && r.Blocks[KindFigure] == 0 {
 		score -= 30
 	}
 
-	// Pages that yielded nothing.
+	// Pages that yielded neither text nor images.
 	empty := 0
 	for _, p := range r.Pages {
-		if p.Lines == 0 {
+		if p.Lines == 0 && p.Images == 0 {
 			empty++
 		}
 	}

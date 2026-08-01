@@ -21,6 +21,14 @@ type Builder struct {
 	fonts map[string]string
 	// outline holds top-level bookmarks pointing at page indices.
 	outline []bookmark
+	// xobjects holds image XObjects available to every page.
+	xobjects map[string]xobject
+}
+
+// xobject is an uncompressed 8-bit RGB image.
+type xobject struct {
+	width, height int
+	rgb           []byte
 }
 
 type page struct {
@@ -214,6 +222,48 @@ func HeadingPageAt(font string, bodySize, headingSize, leading, startY float64, 
 	return sb.String()
 }
 
+// AddImage registers an image XObject built from raw 8-bit RGB samples.
+//
+// The samples are stored uncompressed, which keeps the fixture readable and
+// exercises the same /DeviceRGB decode path a Flate-encoded image takes.
+func (b *Builder) AddImage(name string, width, height int, rgb []byte) *Builder {
+	if b.xobjects == nil {
+		b.xobjects = map[string]xobject{}
+	}
+	b.xobjects[name] = xobject{width: width, height: height, rgb: rgb}
+	return b
+}
+
+// SolidRGB builds uncompressed samples for a solid colour.
+func SolidRGB(width, height int, r, g, bl byte) []byte {
+	out := make([]byte, 0, width*height*3)
+	for i := 0; i < width*height; i++ {
+		out = append(out, r, g, bl)
+	}
+	return out
+}
+
+// GradientRGB builds samples with enough distinct colours to exceed the
+// 256-colour line-art threshold, so the encoder chooses JPEG.
+func GradientRGB(width, height int) []byte {
+	out := make([]byte, 0, width*height*3)
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			out = append(out,
+				byte((x*7+y*3)%256),
+				byte((x*13+y*11)%256),
+				byte((x*29+y*17)%256))
+		}
+	}
+	return out
+}
+
+// DrawImage returns the content stream operators that paint a registered
+// image at (x, y) in user space at the given size.
+func DrawImage(name string, x, y, w, h float64) string {
+	return fmt.Sprintf("q\n%g 0 0 %g %g %g cm\n/%s Do\nQ\n", w, h, x, y, name)
+}
+
 // escapeString escapes a Go string for a PDF literal string operand.
 func escapeString(s string) string {
 	r := strings.NewReplacer(`\`, `\\`, "(", `\(`, ")", `\)`)
@@ -241,7 +291,18 @@ func (b *Builder) Build() []byte {
 
 	fontNames := sortedKeys(b.fonts)
 	firstFontNr := firstContentNr + len(b.pages)
-	infoNr := firstFontNr + len(fontNames)
+
+	xobjNames := make([]string, 0, len(b.xobjects))
+	for k := range b.xobjects {
+		xobjNames = append(xobjNames, k)
+	}
+	for i := 1; i < len(xobjNames); i++ {
+		for j := i; j > 0 && xobjNames[j] < xobjNames[j-1]; j-- {
+			xobjNames[j], xobjNames[j-1] = xobjNames[j-1], xobjNames[j]
+		}
+	}
+	firstXObjNr := firstFontNr + len(fontNames)
+	infoNr := firstXObjNr + len(xobjNames)
 	outlineRootNr := infoNr + 1
 	firstOutlineNr := outlineRootNr + 1
 
@@ -308,7 +369,15 @@ func (b *Builder) Build() []byte {
 	for i, name := range fontNames {
 		fmt.Fprintf(&res, "/%s %d 0 R ", name, firstFontNr+i)
 	}
-	res.WriteString(">> >>")
+	res.WriteString(">>")
+	if len(xobjNames) > 0 {
+		res.WriteString(" /XObject << ")
+		for i, name := range xobjNames {
+			fmt.Fprintf(&res, "/%s %d 0 R ", name, firstXObjNr+i)
+		}
+		res.WriteString(">>")
+	}
+	res.WriteString(" >>")
 
 	// Page dictionaries.
 	for i, p := range b.pages {
@@ -332,6 +401,18 @@ func (b *Builder) Build() []byte {
 	// Fonts.
 	for i, name := range fontNames {
 		obj(firstFontNr+i, "<< "+b.fonts[name]+" >>")
+	}
+
+	// Image XObjects, stored uncompressed.
+	for i, name := range xobjNames {
+		x := b.xobjects[name]
+		offsets[firstXObjNr+i] = buf.Len()
+		fmt.Fprintf(&buf,
+			"%d 0 obj\n<< /Type /XObject /Subtype /Image /Width %d /Height %d "+
+				"/ColorSpace /DeviceRGB /BitsPerComponent 8 /Length %d >>\nstream\n",
+			firstXObjNr+i, x.width, x.height, len(x.rgb))
+		buf.Write(x.rgb)
+		buf.WriteString("\nendstream\nendobj\n")
 	}
 
 	// Info.

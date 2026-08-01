@@ -33,8 +33,9 @@
     "path": "003-pdflatex-image/pdflatex-image.pdf",
     "outcome": "ok",
     "pages": 1,
-    "blocks": 4,
+    "blocks": 5,
     "kinds": {
+      "figure": 1,
       "heading": 1,
       "paragraph": 3
     },
@@ -44,9 +45,9 @@
     "chapters": 1,
     "decode_failure_bucket": "none",
     "quality_score": 100,
-    "fingerprint_sha": "04d0ceea1c417f9d",
-    "fingerprint_head": "h1 p p p",
-    "text_sha": "a632ae1859fdd2b9"
+    "fingerprint_sha": "d11c2bbb52ec3707",
+    "fingerprint_head": "h1 p figure p p",
+    "text_sha": "7481a0b288527e81"
   },
   {
     "path": "004-pdflatex-4-pages/pdflatex-4-pages.pdf",
@@ -126,8 +127,9 @@
     "pages": 117,
     "blocks": 4673,
     "kinds": {
+      "figure": 3,
       "heading": 200,
-      "paragraph": 4473
+      "paragraph": 4470
     },
     "headings": {
       "1": 16,
@@ -142,7 +144,7 @@
     "decode_failure_bucket": "\u003c5%",
     "quality_score": 61,
     "warnings": 17,
-    "fingerprint_sha": "df81f94a80392a02",
+    "fingerprint_sha": "babc7ed1c78a1114",
     "fingerprint_head": "h3 h3 p h1 p p h3 p p p p h3 p p p p p p h3 p p h6 p p ...",
     "text_sha": "4ad89e20fad12d8f"
   },
@@ -152,8 +154,9 @@
     "pages": 117,
     "blocks": 4673,
     "kinds": {
+      "figure": 3,
       "heading": 200,
-      "paragraph": 4473
+      "paragraph": 4470
     },
     "headings": {
       "1": 16,
@@ -168,7 +171,7 @@
     "decode_failure_bucket": "\u003c5%",
     "quality_score": 61,
     "warnings": 17,
-    "fingerprint_sha": "df81f94a80392a02",
+    "fingerprint_sha": "babc7ed1c78a1114",
     "fingerprint_head": "h3 h3 p h1 p p h3 p p p p h3 p p p p p p h3 p p h6 p p ...",
     "text_sha": "4ad89e20fad12d8f"
   },
@@ -330,16 +333,17 @@
     "path": "018-base64-image/base64image.pdf",
     "outcome": "ok",
     "pages": 1,
-    "blocks": 1,
+    "blocks": 2,
     "kinds": {
+      "figure": 1,
       "paragraph": 1
     },
     "chapters": 1,
     "decode_failure_bucket": "none",
     "quality_score": 100,
-    "fingerprint_sha": "148de9c5a7a44d19",
-    "fingerprint_head": "p",
-    "text_sha": "df61357f75180589"
+    "fingerprint_sha": "e5377502af6f896f",
+    "fingerprint_head": "figure p",
+    "text_sha": "de82c5d5a6b6037b"
   },
   {
     "path": "019-grayscale-image/grayscale-image.pdf",
@@ -402,7 +406,19 @@
   },
   {
     "path": "023-cmyk-image/cmyk-image.pdf",
-    "outcome": "no_text_layer"
+    "outcome": "ok",
+    "pages": 1,
+    "blocks": 1,
+    "kinds": {
+      "figure": 1
+    },
+    "chapters": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 98,
+    "warnings": 1,
+    "fingerprint_sha": "889393fb69a5b305",
+    "fingerprint_head": "figure",
+    "text_sha": "01ba4719c80b6fe9"
   },
   {
     "path": "024-annotations/annotated_pdf.pdf",
@@ -474,6 +490,19 @@
   },
   {
     "path": "028-image-references-deduplication/wrong-references.pdf",
-    "outcome": "no_text_layer"
+    "outcome": "ok",
+    "pages": 3,
+    "blocks": 5,
+    "kinds": {
+      "figure": 2,
+      "paragraph": 3
+    },
+    "chapters": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 96,
+    "warnings": 2,
+    "fingerprint_sha": "b3cf0670d6de9d6a",
+    "fingerprint_head": "p figure p p figure",
+    "text_sha": "093dd82c9753d96a"
   }
 ]

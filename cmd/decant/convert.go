@@ -42,6 +42,7 @@ func cmdConvert(ctx context.Context, args []string, stdout, stderr io.Writer) er
 		tableMode     = fs.String("table-mode", "auto", "table handling: auto, html, image, text, drop")
 		imageMaxWidth = fs.Int("image-max-width", def.ImageMaxWidth, "longest image edge in pixels; 0 disables scaling")
 		images        = fs.String("images", string(def.Images), "image handling: keep, grayscale, drop")
+		keepSmall     = fs.Bool("keep-small-images", false, "retain images the size rules would drop")
 		reportPath    = fs.String("report", "", "write a JSON conversion report to this path")
 		strict        = fs.Bool("strict", false, "exit non-zero when any quality threshold is breached")
 		jobs          = fs.Int("jobs", runtime.NumCPU(), "page-parallel workers; does not affect output bytes")
@@ -96,6 +97,7 @@ func cmdConvert(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	opts.Strict = *strict
 	opts.Jobs = *jobs
 	opts.Columns = nColumns
+	opts.KeepSmallImages = *keepSmall
 	opts.Metadata = decant.Metadata{
 		Title: *title, Author: *author, Language: *language,
 	}
@@ -219,6 +221,10 @@ func summarize(w io.Writer, rep *decant.Report, outPath string) {
 	}
 	fmt.Fprintf(w, "decant: wrote %s (%d pages, %d chapters, %s)\n",
 		dest, rep.PagesConverted, rep.Chapters, humanBytes(rep.OutputBytes))
+	if rep.ImagesPlaced > 0 {
+		fmt.Fprintf(w, "        %d image(s), %s\n",
+			rep.ImagesPlaced, humanBytes(int64(rep.ImageBytes)))
+	}
 	fmt.Fprintf(w, "        quality score %d/100", rep.QualityScore)
 	if n := rep.Warnings(); n > 0 {
 		fmt.Fprintf(w, ", %d warning(s)", n)

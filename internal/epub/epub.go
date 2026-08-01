@@ -37,7 +37,24 @@ type Book struct {
 	// NavDepth caps the TOC depth, per the device profile table in spec
 	// section 5. Zero means unlimited.
 	NavDepth int
+
+	// Images are the pictures referenced by the chapters.
+	Images []Image
 }
+
+// Image is one picture in the container.
+type Image struct {
+	// ID is the manifest id and the file basename, e.g. "img001".
+	ID string
+	// Ext is the filename extension without a dot.
+	Ext string
+	// MediaType is the manifest media type.
+	MediaType string
+	Data      []byte
+}
+
+// Href returns the path relative to the content directory.
+func (i Image) Href() string { return "images/" + i.ID + "." + i.Ext }
 
 // Chapter is one XHTML document in the spine.
 type Chapter struct {
@@ -98,6 +115,15 @@ func Write(w io.Writer, b *Book) error {
 		entries = append(entries, zipEntry{
 			name: fmt.Sprintf("%s/text/%s.xhtml", contentDir, ch.ID),
 			data: []byte(wrapXHTML(ch, lang, b.CSS != "")),
+		})
+	}
+	for _, img := range b.Images {
+		entries = append(entries, zipEntry{
+			name: contentDir + "/" + img.Href(),
+			data: img.Data,
+			// Already-compressed formats gain nothing from deflate and cost
+			// decode time on a constrained reader.
+			store: true,
 		})
 	}
 
@@ -172,6 +198,11 @@ func buildOPF(b *Book, lang string) string {
 		fmt.Fprintf(&sb,
 			`    <item id="%s" href="text/%s.xhtml" media-type="application/xhtml+xml"/>`+"\n",
 			esc(ch.ID), esc(ch.ID))
+	}
+	for _, img := range b.Images {
+		fmt.Fprintf(&sb,
+			`    <item id="%s" href="%s" media-type="%s"/>`+"\n",
+			esc(img.ID), esc(img.Href()), esc(img.MediaType))
 	}
 	sb.WriteString("  </manifest>\n")
 

@@ -310,38 +310,6 @@ func (d *Document) Glyphs(p *Page) (pc *PageContent) {
 	return Interpret(d.ctx.XRefTable, d.fonts, p.content, p.res, p.baseCTM)
 }
 
-// HasImages reports whether the page references any image XObject, which the
-// scanned-document classifier in spec section 6 needs alongside glyph counts.
-//
-// This is presence, not coverage. Measuring the fraction of the page an image
-// covers requires its placement rectangle from the CTM at draw time, which
-// arrives with image extraction in M3. Until then the classifier leans on its
-// glyph-count condition, and requiring both conditions keeps it from
-// misfiring on an image-heavy art book with sparse captions.
-func (d *Document) HasImages(p *Page) bool {
-	if p.res == nil {
-		return false
-	}
-	xobjs := dictOf(d.ctx.XRefTable, p.res, "XObject")
-	if xobjs == nil {
-		return false
-	}
-	for _, raw := range xobjs {
-		o, err := d.ctx.Dereference(raw)
-		if err != nil || o == nil {
-			continue
-		}
-		sd, ok := o.(types.StreamDict)
-		if !ok {
-			continue
-		}
-		if nameOf(sd.Dict, "Subtype") == "Image" {
-			return true
-		}
-	}
-	return false
-}
-
 // readInfo pulls metadata from the /Info dictionary and the catalog.
 func (d *Document) readInfo() Info {
 	var inf Info

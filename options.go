@@ -125,6 +125,11 @@ type Heuristics struct {
 	// Default 20.
 	ScanSamplePages int
 
+	// ScanImageCoverRatio is the share of a page images must cover for it to
+	// count as image-covered by the scanned classifier. Spec 6 describes
+	// "full-page images"; 0.8 allows for the margins a scan usually keeps.
+	ScanImageCoverRatio float64
+
 	// MaxColumns caps automatic column detection. Default 3.
 	MaxColumns int
 
@@ -174,6 +179,37 @@ type Heuristics struct {
 	// turn a long epigraph or pull quote set slightly large into a heading
 	// and split the book at it.
 	HeadingMaxWords int
+
+	// BackgroundCoverRatio is the share of the page an image must cover,
+	// when painted beneath the text, to be dropped as a background or
+	// watermark. Default 0.95.
+	BackgroundCoverRatio float64
+
+	// MinImagePoints is the smallest edge an image may have before it is
+	// dropped. Default 16.
+	MinImagePoints float64
+
+	// MinImageAreaRatio is the share of page area below which an image is
+	// dropped. Default 0.02.
+	MinImageAreaRatio float64
+
+	// InlineImageWidthRatio is the fraction of the text column width below
+	// which an image inside a paragraph flows inline. Default 0.4.
+	InlineImageWidthRatio float64
+
+	// CaptionGapLines is how many line heights a caption may sit from its
+	// figure. Default 1.5.
+	CaptionGapLines float64
+
+	// CaptionSizeRatio is how far below the body font a caption is set.
+	// Default 0.05.
+	CaptionSizeRatio float64
+
+	// CaptionOverlapRatio is the horizontal overlap a block must share with
+	// an image to be treated as its caption. Default 0.3.
+	//
+	// Not in the spec: without it a sidebar level with a figure binds to it.
+	CaptionOverlapRatio float64
 }
 
 // DefaultHeuristics returns the documented defaults from spec section 4.
@@ -192,6 +228,7 @@ func DefaultHeuristics() Heuristics {
 		ScanMedianGlyphs:     20,
 		ScanImagePageRatio:   0.8,
 		ScanSamplePages:      20,
+		ScanImageCoverRatio:  0.8,
 		MaxColumns:           3,
 		GutterMinWidthSpaces: 2,
 		GutterMinHeightRatio: 0.6,
@@ -201,6 +238,14 @@ func DefaultHeuristics() Heuristics {
 		HeadingSizeRatio:     0.15,
 		HeadingBoldMaxWords:  15,
 		HeadingMaxWords:      50,
+
+		BackgroundCoverRatio:  0.95,
+		MinImagePoints:        16,
+		MinImageAreaRatio:     0.02,
+		InlineImageWidthRatio: 0.4,
+		CaptionGapLines:       1.5,
+		CaptionSizeRatio:      0.05,
+		CaptionOverlapRatio:   0.3,
 	}
 }
 
@@ -369,6 +414,8 @@ type Options struct {
 
 	// Images selects image handling. Default ImagesKeep.
 	Images ImageMode
+	// KeepSmallImages retains images the size rules in spec 4.7 would drop.
+	KeepSmallImages bool
 	// ImageMaxWidth is the longest edge in pixels; 0 disables scaling.
 	ImageMaxWidth int
 

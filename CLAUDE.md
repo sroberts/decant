@@ -8,7 +8,7 @@ decant converts fixed-layout, text-layer PDFs into semantic, reflowable EPUB 3. 
 
 `spec.md` is the authoritative design document — read the relevant section before changing a stage, and update §13 (open/closed decisions, with dates) when a design decision changes. Code comments reference spec sections by number; keep those references accurate when you move logic.
 
-Currently at **M2** complete: text extraction, column detection, heading classification, outline reconciliation, and chapter splitting all work end to end and all output passes epubcheck. M3 (image extraction, placement, re-encoding, figures and captions) is next.
+Currently at **M3** complete: text extraction, column detection, heading classification, outline reconciliation, chapter splitting, and image extraction with figures and captions all work end to end and all output passes epubcheck. M4 (furniture removal, dehyphenation, footnotes, lists, blockquotes) is next.
 
 ## Commands
 
@@ -42,7 +42,8 @@ go run ./cmd/decant meta book.pdf --json
   classify.go        body font, heading classification, outline reconciliation
   render.go          blocks to XHTML, chapter splitting, TOC construction
 internal/pdf/        content stream lexer + interpreter, font machinery, doc/xref access
-internal/layout/     column detection, line assembly, block segmentation, paragraphs
+internal/layout/     column detection, line assembly, block segmentation, figures
+internal/images/     decode, scale, dither, re-encode extracted images
 internal/epub/       deterministic EPUB 3.3 serialization
 internal/testpdf/    synthetic PDF builder for tests
 cmd/decant/          CLI, thin wrapper over the root package
@@ -62,8 +63,13 @@ Pipeline: `parse → glyphs → lines → blocks → furniture → classify → 
 - **`FontID` is a `uint16` index, not a `FontRef`.** `spec.md` §4.2 sketches it as a struct; it is an index because `Glyph` is the dominant memory consumer (~5,000/page, ~56 bytes each against §9's 60-byte budget). Resolve through `PageContent.Fonts`.
 - **Page space runs y-down** from the top-left of the crop box, with `/Rotate` already applied by `baseCTM`. PDF user space is y-up. `OutlineItem.Y` is the one exception — it is still in user space and must be converted by the consumer.
 - **pdfcpu panics on hostile input.** `internal/pdf/doc.go` wraps every entry point in `recoverMalformed`, converting panics to `ErrMalformed`. `FuzzOpen` found a nil deref in `EnsurePageCount` within seconds. Do not remove those recovers, and add one to any new pdfcpu entry point.
+- **Never re-sort blocks after stage 4.** Their order already encodes the column reading order. M3 briefly sorted paragraphs and figures together by vertical position, which interleaved the columns of every two-column page; `figureInsertIndex` now inserts figures into the existing sequence instead. `TestFigureDoesNotDisturbColumnOrder` guards it.
+- **pdfcpu's `Dereference` matches `types.IndirectRef` by value.** Passing the `*IndirectRef` that `NewIndirectRef` returns hands it straight back unresolved, which looks like success and fails much later. Dereference `*types.NewIndirectRef(n, 0)`.
+- **Use `pdfcpu.ExtractImage`, not `RenderImage`.** The latter assumes filter-pipeline preparation has already happened and yields an empty reader on Flate-encoded images.
 - **Never hold a pointer into a slice you are still appending to.** `buildNav` in `render.go` builds its tree from individually allocated nodes for exactly this reason: a reallocation would silently strand every child added through a stale pointer.
 - **Four heuristics are deliberately not in the spec**, all guards against the spec's rule misfiring, all tunable in `Heuristics`. `ColumnMinRows` (8) and `ColumnMinLines` (3) reject a column split the page has too little evidence for — asking whether a band is empty across 60% of rows is meaningless on a four-row title page, which is where the phantom gutters came from. `ColumnMinGlyphRatio` rejects a split leaving a near-empty column. `HeadingMaxWords` stops a long epigraph set slightly large from becoming a heading and splitting the book at it. Say so if you change them.
+- **`hhrutter/tiff`, not `x/image/tiff`.** pdfcpu renders CMYK images to TIFF and the upstream decoder rejects that colour model. Same BSD-3 fork pdfcpu itself uses.
+- **Line art is palettized before PNG encoding.** Palettizing is the entire reason spec §4.7 picks PNG on a low colour count; Go's encoder otherwise writes full RGBA, which turned a 255-colour test chart into 1.7 MB where the paletted form is 447 KB.
 - **TeX text fonts get the OT1 encoding** (`internal/pdf/encoding.go`). They are symbolic Type1 programs with no `/Encoding` and no `/ToUnicode`, and sfnt cannot parse Type1 to recover the built-in encoding, so nothing in the PDF says how to read them. Without OT1 every f-ligature and typographic quote in a LaTeX document becomes U+FFFD. `isTeXTextFont` excludes the math families (CMMI, CMSY, CMEX, MSAM…) — they use OML/OMS/OMX and OT1 would be actively wrong. **Math symbol extraction from TeX documents remains unsolved** and is the largest remaining source of decode failures on academic PDFs.
 
 ## Non-negotiable constraints

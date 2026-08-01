@@ -12,7 +12,7 @@ import (
 // Grouping happens twice, per spec section 4.9: first at the --split-at
 // boundary, then again at --max-chunk-bytes. Both splits land on a paragraph
 // boundary, and the second appends -2, -3 suffixes to the chapter ID.
-func (c *Converter) buildChapters(doc *Document, rep *Report) ([]epub.Chapter, []epub.NavPoint) {
+func (c *Converter) buildChapters(doc *Document, imgs *imageSet, rep *Report) ([]epub.Chapter, []epub.NavPoint) {
 	groups := c.groupBlocks(doc.Blocks)
 	if len(groups) == 0 {
 		return nil, nil
@@ -38,7 +38,7 @@ func (c *Converter) buildChapters(doc *Document, rep *Report) ([]epub.Chapter, [
 			chapters = append(chapters, epub.Chapter{
 				ID:    id,
 				Title: title,
-				Body:  renderBlocks(part),
+				Body:  renderBlocks(part, imgs),
 			})
 
 			for _, b := range part {
@@ -251,11 +251,19 @@ func (c *Converter) splitBySize(blocks []Block, rep *Report, chapterID string) [
 // renderedSize estimates a block's serialized length. Escaping can only grow
 // the text, so the estimate is scaled to stay conservative.
 func renderedSize(b Block) int {
+	if b.Kind == KindFigure {
+		// The image itself is a separate container entry; only the figure
+		// markup lands in the XHTML.
+		return len(b.Text)*12/10 + 160
+	}
 	return len(b.Text)*12/10 + 32
 }
 
 // renderBlocks renders a chapter body as an XHTML fragment.
-func renderBlocks(blocks []Block) string {
+//
+// imgs resolves a figure's ImageID to its dimensions and href; a figure whose
+// image is missing renders as its caption alone rather than a broken link.
+func renderBlocks(blocks []Block, imgs *imageSet) string {
 	var sb strings.Builder
 	sb.Grow(len(blocks) * 96)
 
@@ -265,11 +273,44 @@ func renderBlocks(blocks []Block) string {
 
 	for _, b := range blocks {
 		text := epub.EscapeXML(b.Text)
-		if strings.TrimSpace(text) == "" {
+		if strings.TrimSpace(text) == "" && b.Kind != KindFigure {
 			continue
 		}
 
 		switch b.Kind {
+		case KindFigure:
+			img, ok := imgs.byID(b.ImageID)
+			if !ok {
+				// The image was dropped after the block was made. Keep the
+				// caption, which is real content, and drop the frame.
+				if text != "" {
+					fmt.Fprintf(&sb, "<p class=\"caption\">%s</p>\n", text)
+					first = true
+				}
+				continue
+			}
+			alt := text
+			if alt == "" {
+				alt = "Figure"
+			}
+			if b.InlineImage {
+				// Spec 4.7 flows a narrow image inside a paragraph rather
+				// than breaking the text around it.
+				fmt.Fprintf(&sb, "<p><img src=\"../%s\" alt=\"%s\"/></p>\n",
+					epub.EscapeXML(img.Href()), epub.EscapeXML(alt))
+			} else if text != "" {
+				fmt.Fprintf(&sb,
+					"<figure id=\"%s\">\n  <img src=\"../%s\" alt=\"%s\"/>\n  <figcaption>%s</figcaption>\n</figure>\n",
+					epub.EscapeXML(b.ID), epub.EscapeXML(img.Href()),
+					epub.EscapeXML(alt), text)
+			} else {
+				fmt.Fprintf(&sb,
+					"<figure id=\"%s\">\n  <img src=\"../%s\" alt=\"%s\"/>\n</figure>\n",
+					epub.EscapeXML(b.ID), epub.EscapeXML(img.Href()),
+					epub.EscapeXML(alt))
+			}
+			first = true
+
 		case KindHeading:
 			level := b.Level
 			if level < 1 {

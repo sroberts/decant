@@ -8,7 +8,7 @@ decant converts fixed-layout, text-layer PDFs into semantic, reflowable EPUB 3. 
 
 `spec.md` is the authoritative design document — read the relevant section before changing a stage, and update §13 (open/closed decisions, with dates) when a design decision changes. Code comments reference spec sections by number; keep those references accurate when you move logic.
 
-Currently at **M1** complete: text extraction and paragraph reconstruction work end to end and all output passes epubcheck. M2 (block segmentation with column detection, heading classification, outline-driven TOC) is next.
+Currently at **M2** complete: text extraction, column detection, heading classification, outline reconciliation, and chapter splitting all work end to end and all output passes epubcheck. M3 (image extraction, placement, re-encoding, figures and captions) is next.
 
 ## Commands
 
@@ -39,14 +39,20 @@ go run ./cmd/decant meta book.pdf --json
 
 ```
 *.go                 package decant — public engine (Options, Converter, Document, Report)
+  classify.go        body font, heading classification, outline reconciliation
+  render.go          blocks to XHTML, chapter splitting, TOC construction
 internal/pdf/        content stream lexer + interpreter, font machinery, doc/xref access
-internal/layout/     line assembly, block segmentation, paragraph reconstruction
+internal/layout/     column detection, line assembly, block segmentation, paragraphs
 internal/epub/       deterministic EPUB 3.3 serialization
 internal/testpdf/    synthetic PDF builder for tests
 cmd/decant/          CLI, thin wrapper over the root package
 ```
 
-Pipeline: `parse → glyphs → lines → blocks → furniture → classify → assemble → serialize`. Stages 2–6 are per-page; stage 7 needs the whole document. Roughly 70% of the work is in content stream interpretation (`internal/pdf/content.go`), block segmentation, and structure classification.
+Pipeline: `parse → glyphs → lines → blocks → furniture → classify → assemble → serialize`. Roughly 70% of the work is in content stream interpretation (`internal/pdf/content.go`), block segmentation, and structure classification.
+
+**Stage split matters.** `layout.AnalyzePage` runs stages 3–5 per page. Classification (stage 6) runs *after every page* in `classify.go`, because the body font is a document-wide glyph-count-weighted mode — computing it per page would make a chapter opening page classify its own headings as body text. `Analyze` therefore builds `doc.Blocks` and a parallel `[]blockFeatures` during the page loop, then calls `reconcileOutline` and `classify` once at the end.
+
+**Column detection runs before line assembly is final.** Baseline clustering can merge two columns into one line, so `SplitLinesAtGutters` cuts lines wherever a real inter-glyph gap contains a gutter midpoint. A full-width heading is continuous text across the gutter with no gap there, so it survives intact and `OrderLines` treats it as a band barrier. That is what keeps spanning titles from being sliced in half.
 
 `Analyze` (stages 1–6, returns a mutable `*Document` block tree) is deliberately separate from `Write` (serialization) so the CrossPoint TUI can let a user correct heading levels before committing. Keep that split intact.
 
@@ -56,6 +62,8 @@ Pipeline: `parse → glyphs → lines → blocks → furniture → classify → 
 - **`FontID` is a `uint16` index, not a `FontRef`.** `spec.md` §4.2 sketches it as a struct; it is an index because `Glyph` is the dominant memory consumer (~5,000/page, ~56 bytes each against §9's 60-byte budget). Resolve through `PageContent.Fonts`.
 - **Page space runs y-down** from the top-left of the crop box, with `/Rotate` already applied by `baseCTM`. PDF user space is y-up. `OutlineItem.Y` is the one exception — it is still in user space and must be converted by the consumer.
 - **pdfcpu panics on hostile input.** `internal/pdf/doc.go` wraps every entry point in `recoverMalformed`, converting panics to `ErrMalformed`. `FuzzOpen` found a nil deref in `EnsurePageCount` within seconds. Do not remove those recovers, and add one to any new pdfcpu entry point.
+- **Never hold a pointer into a slice you are still appending to.** `buildNav` in `render.go` builds its tree from individually allocated nodes for exactly this reason: a reallocation would silently strand every child added through a stale pointer.
+- **Two heuristics are deliberately not in the spec**, both guards against the spec's rule misfiring, both tunable in `Heuristics`: `ColumnMinGlyphRatio` rejects a column split leaving a near-empty column, and `HeadingMaxWords` stops a long epigraph set slightly large from becoming a heading and splitting the book at it. Say so if you change them.
 
 ## Non-negotiable constraints
 
@@ -77,16 +85,18 @@ Violating one of these is a design regression, not a style nit.
 
 Golden tests assert on extracted text plus a **structure fingerprint** (ordered element types and heading levels), never byte-identical XHTML, so formatting refactors don't churn the corpus. `internal/testpdf` builds synthetic fixtures in memory; the real corpus comes from Scott's library at build time.
 
-Two fixture gotchas that already caused false failures:
+Four fixture gotchas that already caused false failures:
 
 - Text drawn horizontally on a `/Rotate 90` page genuinely displays sideways and is correctly dropped as a rotated run. Use `testpdf.RotatedTextPage` to pre-rotate, which is what real landscape pages do.
 - Chunk splitting only happens at paragraph boundaries, so a fixture must contain blank lines. One enormous paragraph legitimately stays in a single file and logs a warning.
+- Two-column fixtures need column text short enough to leave an actual gutter. Overlapping columns have no gutter and correctly detect as one column.
+- `testpdf.HeadingPage` starts at y=720. Concatenating two of them overlaps the text at identical baselines and line assembly interleaves them character by character. Use `HeadingPageAt` with explicit start positions to stack sections.
 
 Fuzzing is not optional — malformed PDFs are a hostile input class and the parser must not panic or allocate without bound. Add a seed to the relevant target whenever you fix a parser bug.
 
 ## Milestones
 
-M1 interpreter + paragraphs (**done**) → M2 segmentation, columns, headings, TOC → M3 images → M4 furniture removal, dehyphenation, footnotes, lists → M5 tables, profiles, report, `probe` → M6 API stabilization + TUI integration.
+M1 interpreter + paragraphs (**done**) → M2 segmentation, columns, headings, TOC (**done**) → M3 images → M4 furniture removal, dehyphenation, footnotes, lists → M5 tables, profiles, report, `probe` → M6 API stabilization + TUI integration.
 
 Ship M1–M3 before optimizing: tuning layout thresholds against three test files produces overfitted garbage. Tag `v0.x` through M5; the API is unstable until `v1.0.0`.
 

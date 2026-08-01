@@ -69,7 +69,6 @@ func cmdConvert(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	// Features accepted for CLI compatibility with the spec surface but not
 	// yet implemented. Refusing silently would be worse than saying so.
 	for name, milestone := range map[string]string{
-		"columns":        "M2 (column detection)",
 		"keep-headers":   "M4 (furniture removal)",
 		"no-dehyphenate": "M4 (dehyphenation)",
 		"table-mode":     "M5 (table detection)",
@@ -78,9 +77,13 @@ func cmdConvert(ctx context.Context, args []string, stdout, stderr io.Writer) er
 			fmt.Fprintf(stderr, "decant: --%s is not implemented yet; it lands in %s\n", name, milestone)
 		}
 	}
-	_ = columns
 	_ = keepHeaders
 	_ = tableMode
+
+	nColumns, err := parseColumns(*columns)
+	if err != nil {
+		return &decant.UsageError{Err: err}
+	}
 
 	opts := def
 	opts.Profile = decant.Profile(*profile)
@@ -92,6 +95,7 @@ func cmdConvert(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	opts.KeepHeaders = *keepHeaders
 	opts.Strict = *strict
 	opts.Jobs = *jobs
+	opts.Columns = nColumns
 	opts.Metadata = decant.Metadata{
 		Title: *title, Author: *author, Language: *language,
 	}
@@ -283,6 +287,22 @@ func applyProfileRespectingFlags(opts *decant.Options, set map[string]bool, chun
 	if set["images"] {
 		opts.Images = images
 	}
+}
+
+// parseColumns converts the --columns flag to the option value, where zero
+// means detect from the page's projection profile.
+func parseColumns(v string) (int, error) {
+	switch strings.TrimSpace(v) {
+	case "", "auto":
+		return 0, nil
+	case "1":
+		return 1, nil
+	case "2":
+		return 2, nil
+	case "3":
+		return 3, nil
+	}
+	return 0, fmt.Errorf("--columns must be auto, 1, 2, or 3, got %q", v)
 }
 
 func firstNonEmpty(vals ...string) string {

@@ -75,7 +75,11 @@ func (r Rect) Height() float64 { return r.MaxY - r.MinY }
 type OutlineItem struct {
 	Title string
 	// Page is the zero-based destination page, or -1 when unresolved.
-	Page     int
+	Page int
+	// Y is the destination's vertical position in PDF user space, or NaN when
+	// the destination specifies none. It is not page space: user space runs
+	// y-up from the crop box's lower-left corner.
+	Y        float64
 	Children []OutlineItem
 }
 

@@ -124,6 +124,40 @@ type Heuristics struct {
 	// ScanSamplePages is how many pages the scanned classifier samples.
 	// Default 20.
 	ScanSamplePages int
+
+	// MaxColumns caps automatic column detection. Default 3.
+	MaxColumns int
+
+	// GutterMinWidthSpaces is how many median space widths a whitespace band
+	// must span to count as a column gutter. Default 2.
+	GutterMinWidthSpaces float64
+
+	// GutterMinHeightRatio is the fraction of text-carrying rows a band must
+	// be empty across to count as a gutter. Default 0.6.
+	GutterMinHeightRatio float64
+
+	// ColumnMinGlyphRatio is the minimum share of a page's glyphs each
+	// detected column must hold for the split to be believed. Default 0.1.
+	//
+	// Not in the spec. Section 4.4 notes the column heuristic misfires on
+	// tables and figures; this guard rejects a split that would leave a
+	// column nearly empty.
+	ColumnMinGlyphRatio float64
+
+	// HeadingSizeRatio is how far a block's font size must exceed the body
+	// font to be a heading. Default 0.15, meaning 15% larger.
+	HeadingSizeRatio float64
+
+	// HeadingBoldMaxWords is the word count below which a bold block with no
+	// terminal punctuation is a heading. Default 15.
+	HeadingBoldMaxWords int
+
+	// HeadingMaxWords caps the size-based heading test. Default 50.
+	//
+	// Not in the spec. Section 4.6 makes size alone sufficient, which would
+	// turn a long epigraph or pull quote set slightly large into a heading
+	// and split the book at it.
+	HeadingMaxWords int
 }
 
 // DefaultHeuristics returns the documented defaults from spec section 4.
@@ -142,6 +176,13 @@ func DefaultHeuristics() Heuristics {
 		ScanMedianGlyphs:     20,
 		ScanImagePageRatio:   0.8,
 		ScanSamplePages:      20,
+		MaxColumns:           3,
+		GutterMinWidthSpaces: 2,
+		GutterMinHeightRatio: 0.6,
+		ColumnMinGlyphRatio:  0.1,
+		HeadingSizeRatio:     0.15,
+		HeadingBoldMaxWords:  15,
+		HeadingMaxWords:      50,
 	}
 }
 
@@ -304,6 +345,10 @@ type Options struct {
 	// NoDehyphenate preserves line-break hyphens verbatim.
 	NoDehyphenate bool
 
+	// Columns forces a column count. Zero detects from the page's projection
+	// profile; 1, 2, or 3 override it. Spec 3: --columns.
+	Columns int
+
 	// Images selects image handling. Default ImagesKeep.
 	Images ImageMode
 	// ImageMaxWidth is the longest edge in pixels; 0 disables scaling.
@@ -381,6 +426,9 @@ func (o *Options) validate() error {
 	}
 	if o.Jobs < 0 {
 		return fmt.Errorf("jobs %d is negative", o.Jobs)
+	}
+	if o.Columns < 0 || o.Columns > 3 {
+		return fmt.Errorf("columns %d is out of range (want auto, 1, 2, or 3)", o.Columns)
 	}
 	return nil
 }

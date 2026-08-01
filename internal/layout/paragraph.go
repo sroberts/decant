@@ -20,48 +20,65 @@ type Paragraph struct {
 	Font *pdf.Font
 }
 
-// Block is a group of lines that belong together vertically: one column of
-// one visual unit, before structure classification runs.
-//
-// Full bottom-up block segmentation with column detection is spec section 4.4
-// and lands in M2. This is the vertical-gap half of that algorithm, which is
-// what paragraph reconstruction needs to compute sensible per-block medians.
+// Block is a group of lines that belong together: one visual unit within one
+// column, before structure classification runs.
 type Block struct {
 	Lines  []Line
 	Bounds pdf.Rect
+	// Column is the index of the column the block sits in, or -1 for a
+	// full-width block spanning the gutters.
+	Column int
 }
 
-// SegmentBlocks groups lines into blocks by vertical gap and font change.
+// SegmentBlocks groups lines into blocks with the bottom-up merge from spec
+// section 4.4, which outperforms recursive XY-cut on documents with floats
+// and sidebars.
 //
-// It deliberately does not do column detection, so on a multi-column page the
-// blocks will interleave columns. Spec section 4.4 covers that in M2.
+// A line joins the running block when its horizontal overlap with the block
+// exceeds BlockOverlapRatio of the narrower of the two and the vertical gap
+// is within BlockGapRatio of the running median leading. A font family
+// change, a size change beyond BlockSizeChangeRatio, or a backward step
+// breaks the block.
+//
+// Lines must already be in reading order; OrderLines produces that. Sorting
+// here would destroy the column ordering it establishes.
 func SegmentBlocks(cfg Config, lines []Line) []Block {
+	return segmentBlocks(cfg, lines, nil)
+}
+
+func segmentBlocks(cfg Config, lines []Line, cols []Column) []Block {
 	if len(lines) == 0 {
 		return nil
 	}
 
 	var blocks []Block
 	var cur []Line
-	// leading is the running median gap between consecutive baselines, which
-	// adapts to a block set more loosely or tightly than the document norm.
+	// leadings holds the gaps seen so far in the running block, so its median
+	// adapts to text set more loosely or tightly than the document norm.
 	var leadings []float64
+	// bounds tracks the running block's extent, which the overlap test needs:
+	// comparing against the whole block rather than only the previous line
+	// keeps a short line from detaching the rest of a paragraph.
+	var bounds pdf.Rect
 
 	flush := func() {
 		if len(cur) == 0 {
 			return
 		}
-		b := Block{Lines: cur}
-		for _, l := range cur {
-			b.Bounds = b.Bounds.Union(l.Bounds)
+		b := Block{Lines: cur, Bounds: bounds}
+		if cols != nil {
+			b.Column = columnOf(cols, cur[0])
 		}
 		blocks = append(blocks, b)
 		cur = nil
 		leadings = nil
+		bounds = pdf.Rect{}
 	}
 
-	for i, l := range lines {
+	for _, l := range lines {
 		if len(cur) == 0 {
 			cur = append(cur, l)
+			bounds = l.Bounds
 			continue
 		}
 		prev := cur[len(cur)-1]
@@ -77,19 +94,40 @@ func SegmentBlocks(cfg Config, lines []Line) []Block {
 		sizeChanged := relDiff(prev.Size, l.Size) > cfg.BlockSizeChangeRatio
 		familyChanged := fontFamily(prev.Font) != fontFamily(l.Font)
 		gapTooLarge := gap > cfg.BlockGapRatio*med
+		// A non-positive gap means the reading order moved back up the page,
+		// which happens at a column boundary.
+		steppedBack := gap < 0
+		overlapTooSmall := horizontalOverlap(bounds, l.Bounds) < cfg.BlockOverlapRatio
 
-		if gapTooLarge || sizeChanged || familyChanged {
+		if gapTooLarge || sizeChanged || familyChanged || steppedBack || overlapTooSmall {
 			flush()
 			cur = append(cur, l)
+			bounds = l.Bounds
 			continue
 		}
 
 		leadings = append(leadings, gap)
 		cur = append(cur, l)
-		_ = i
+		bounds = bounds.Union(l.Bounds)
 	}
 	flush()
 	return blocks
+}
+
+// horizontalOverlap returns the shared horizontal extent of two boxes as a
+// fraction of the narrower one. Two boxes that do not overlap return 0; a box
+// fully inside the other returns 1.
+func horizontalOverlap(a, b pdf.Rect) float64 {
+	lo := math.Max(a.MinX, b.MinX)
+	hi := math.Min(a.MaxX, b.MaxX)
+	if hi <= lo {
+		return 0
+	}
+	narrower := math.Min(a.Width(), b.Width())
+	if narrower <= 0 {
+		return 1
+	}
+	return (hi - lo) / narrower
 }
 
 func relDiff(a, b float64) float64 {

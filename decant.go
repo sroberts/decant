@@ -44,7 +44,9 @@ func New(opts Options) (*Converter, error) {
 	if err := opts.validate(); err != nil {
 		return nil, &UsageError{Err: err}
 	}
-	return &Converter{opts: opts, cfg: layoutConfig(opts.Heuristics)}, nil
+	cfg := layoutConfig(opts.Heuristics)
+	cfg.Columns = opts.Columns
+	return &Converter{opts: opts, cfg: cfg}, nil
 }
 
 // Options returns the converter's resolved options.
@@ -65,6 +67,10 @@ func layoutConfig(h Heuristics) layout.Config {
 		BlockGapRatio:        h.BlockGapRatio,
 		BlockOverlapRatio:    h.BlockOverlapRatio,
 		BlockSizeChangeRatio: h.BlockSizeChangeRatio,
+		MaxColumns:           h.MaxColumns,
+		GutterMinWidthSpaces: h.GutterMinWidthSpaces,
+		GutterMinHeightRatio: h.GutterMinHeightRatio,
+		ColumnMinGlyphRatio:  h.ColumnMinGlyphRatio,
 	}
 }
 
@@ -118,18 +124,42 @@ func (c *Converter) Analyze(ctx context.Context, r io.ReaderAt, size int64) (*Do
 		return nil, err
 	}
 
+	doc.Outline = convertOutline(src.Outline())
+
+	// Flatten the outline and index it by page, so each destination's user
+	// space y can be converted while its page is loaded.
+	var entries []outlineEntry
+	flattenOutline(doc.Outline, 1, &entries)
+	entriesByPage := map[int][]int{}
+	for i, e := range entries {
+		entriesByPage[e.page] = append(entriesByPage[e.page], i)
+	}
+
+	// feats parallels doc.Blocks and holds the measurements classification
+	// needs; hist accumulates the document-wide font statistics the body font
+	// is computed from.
+	var feats []blockFeatures
+	hist := fontHistogram{}
+
 	for _, idx := range pages {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		c.analyzePage(src, idx, cache, doc, rep)
+		c.analyzePage(src, idx, cache, doc, &feats, hist, entries, entriesByPage[idx], rep)
 	}
+
+	// Stage 6 runs document-wide: the body font is a whole-document statistic
+	// and the outline spans pages.
+	reconcileOutline(doc.Blocks, feats, entries, rep)
+	c.classify(doc.Blocks, feats, hist, rep)
 
 	assignBlockIDs(doc.Blocks)
 	for _, b := range doc.Blocks {
 		rep.Blocks[b.Kind]++
+		if b.Kind == KindHeading {
+			rep.Headings[b.Level]++
+		}
 	}
-	doc.Outline = convertOutline(src.Outline())
 	doc.Modified = c.resolveModTime(src.Info())
 
 	if len(doc.Blocks) == 0 {
@@ -138,8 +168,19 @@ func (c *Converter) Analyze(ctx context.Context, r io.ReaderAt, size int64) (*Do
 	return doc, nil
 }
 
-// analyzePage runs stages 2 through 6 for one page and appends its blocks.
-func (c *Converter) analyzePage(src *pdf.Document, idx int, cache map[int]*pdf.PageContent, doc *Document, rep *Report) {
+// analyzePage runs stages 2 through 5 for one page and appends its blocks.
+// Structure classification is document-wide and runs after every page.
+func (c *Converter) analyzePage(
+	src *pdf.Document,
+	idx int,
+	cache map[int]*pdf.PageContent,
+	doc *Document,
+	feats *[]blockFeatures,
+	hist fontHistogram,
+	entries []outlineEntry,
+	entryIdx []int,
+	rep *Report,
+) {
 	m := PageMetrics{Page: idx}
 
 	page, err := src.Page(idx)
@@ -147,6 +188,15 @@ func (c *Converter) analyzePage(src *pdf.Document, idx int, cache map[int]*pdf.P
 		rep.warn("parse", idx, fmt.Sprintf("skipped: %v", err))
 		rep.Pages = append(rep.Pages, m)
 		return
+	}
+
+	// Convert this page's outline destinations while its geometry is loaded.
+	for _, ei := range entryIdx {
+		if math.IsNaN(entries[ei].userY) {
+			continue
+		}
+		_, y := page.ToPageSpace(0, entries[ei].userY)
+		entries[ei].pageY = y
 	}
 
 	pc, ok := cache[idx]
@@ -163,20 +213,27 @@ func (c *Converter) analyzePage(src *pdf.Document, idx int, cache map[int]*pdf.P
 			"content stream interpretation aborted on a parser fault; page text is incomplete or absent")
 	}
 
-	pl := layout.AssembleLines(c.cfg, pc)
+	pl := layout.AnalyzePage(c.cfg, pc)
 	m.Glyphs = pl.GlyphCount
 	m.DecodeFailures = pl.DecodeFailures
 	m.Lines = len(pl.Lines)
+	m.Blocks = len(pl.Blocks)
+	m.Columns = len(pl.Columns)
+	m.RotatedDropped = pl.RotatedDropped
 	m.UsedInvisibleText = pl.UsedInvisibleText
 
+	if len(pl.Columns) > 1 {
+		rep.MultiColumnPages++
+		rep.info("blocks", idx,
+			fmt.Sprintf("detected %d text columns", len(pl.Columns)))
+	}
 	if pl.UsedInvisibleText {
 		rep.info("glyphs", idx,
 			"page has no visible text; kept the invisible (Tr 3) layer, which is a searchable scan")
 	}
-	if !c.opts.Heuristics.KeepRotated && len(pl.Rotated) > 0 {
-		m.RotatedDropped = len(pl.Rotated)
+	if pl.RotatedDropped > 0 {
 		rep.info("lines", idx,
-			fmt.Sprintf("dropped %d rotated run(s) beyond %.0f degrees", len(pl.Rotated),
+			fmt.Sprintf("dropped %d rotated run(s) beyond %.0f degrees", pl.RotatedDropped,
 				c.opts.Heuristics.RotationTolerance))
 	}
 	if r := m.DecodeFailureRate(); r > 0.05 {
@@ -184,23 +241,44 @@ func (c *Converter) analyzePage(src *pdf.Document, idx int, cache map[int]*pdf.P
 			fmt.Sprintf("%.1f%% of glyphs failed to decode to Unicode", r*100))
 	}
 
-	blocks := layout.SegmentBlocks(c.cfg, pl.Lines)
-	m.Blocks = len(blocks)
+	// Accumulate the document-wide font statistics the body font derives
+	// from, weighted by glyph count as spec section 4.6 requires.
+	for _, l := range pl.Lines {
+		family, bold := "", false
+		if l.Font != nil {
+			family, bold = l.Font.Family, l.Font.Bold
+		}
+		hist.add(family, l.Size, bold, len(l.Glyphs))
+	}
 
-	for _, b := range blocks {
+	for _, b := range pl.Blocks {
 		for _, p := range layout.Reconstruct(c.cfg, b) {
-			if strings.TrimSpace(p.Text) == "" {
+			text := strings.TrimSpace(p.Text)
+			if text == "" {
 				continue
 			}
+			family, bold := "", false
+			if p.Font != nil {
+				family, bold = p.Font.Family, p.Font.Bold
+			}
 			doc.Blocks = append(doc.Blocks, Block{
-				// Structure classification is spec section 4.6 and lands in
-				// M2; every block is a paragraph until then.
+				// Kind and Level are filled in by classify once every page
+				// has contributed to the font histogram.
 				Kind:   KindParagraph,
-				Text:   p.Text,
+				Text:   text,
 				Page:   idx,
 				Bounds: toRect(p.Bounds),
 				Size:   p.Size,
-				Font:   fontName(p.Font),
+				Font:   family,
+			})
+			*feats = append(*feats, blockFeatures{
+				size:      p.Size,
+				family:    family,
+				bold:      bold,
+				words:     countWords(text),
+				terminal:  endsWithTerminal(text),
+				fullWidth: b.Column == -1,
+				lines:     len(p.Lines),
 			})
 		}
 	}
@@ -474,6 +552,7 @@ func convertOutline(items []pdf.OutlineItem) []OutlineItem {
 		out = append(out, OutlineItem{
 			Title:    it.Title,
 			Page:     it.Page,
+			Y:        it.Y,
 			Children: convertOutline(it.Children),
 		})
 	}

@@ -78,9 +78,28 @@ func TestEPUBCheckValidation(t *testing.T) {
 			pdf:  hostileMetadataDoc,
 		},
 		{
-			name: "headings",
+			name: "headings-and-chapters",
 			opts: defaultOpts,
-			pdf:  simpleDoc,
+			pdf:  headingDoc,
+		},
+		{
+			name: "nested-nav",
+			opts: func() decant.Options {
+				o := defaultOpts()
+				o.SplitAt = decant.SplitAtNone
+				return o
+			},
+			pdf: nestedHeadingDoc,
+		},
+		{
+			name: "two-column",
+			opts: defaultOpts,
+			pdf:  twoColumnDoc,
+		},
+		{
+			name: "outline-driven",
+			opts: defaultOpts,
+			pdf:  outlineDoc,
 		},
 	}
 
@@ -126,5 +145,64 @@ func hostileMetadataDoc() []byte {
 			`Text with & ampersands, <angle brackets>, and "quotes" in it.`,
 			`More text with a stray ]]> sequence and a -- double hyphen.`,
 		})).
+		Build()
+}
+
+// nestedHeadingDoc has two heading levels, so the TOC nests.
+func nestedHeadingDoc() []byte {
+	content := testpdf.HeadingPageAt("F1", 10, 22, 13, 1500, [][]string{{
+		"Part One",
+		"Body text introducing the part, running to a couple of lines so",
+		"the classifier sees a genuine paragraph beneath the heading.",
+	}}) + testpdf.HeadingPageAt("F1", 10, 15, 13, 1330, [][]string{
+		{
+			"Chapter A",
+			"Body text of chapter A running to more than one line so it",
+			"reads clearly as body rather than display type.",
+		},
+		{
+			"Chapter B",
+			"Body text of chapter B, likewise more than a single line in",
+			"length so the block is unambiguous.",
+		},
+	})
+	return testpdf.New().
+		SetInfo("Title", "Nested Structure").
+		AddPage(612, 1600, content).
+		Build()
+}
+
+// twoColumnDoc is the academic-paper shape: a spanning title over two columns.
+func twoColumnDoc() []byte {
+	left := []string{
+		"Alpha one text here", "Alpha two text here", "Alpha three here",
+		"Alpha four text now", "Alpha five text now", "Alpha six text now",
+	}
+	right := []string{
+		"Beta one text here", "Beta two text here", "Beta three here",
+		"Beta four text now", "Beta five text now", "Beta six text now",
+	}
+	return testpdf.New().
+		SetInfo("Title", "Two Column Paper").
+		AddPage(612, 792, testpdf.TwoColumnPage("F1", 10, 13,
+			"A Paper Title Spanning The Full Measure Of Both Columns", left, right)).
+		Build()
+}
+
+// outlineDoc carries PDF bookmarks, which drive structure authoritatively.
+func outlineDoc() []byte {
+	return testpdf.New().
+		SetInfo("Title", "Outlined Document").
+		AddPage(612, 792, testpdf.HeadingPage("F1", 10, 16, 13, [][]string{{
+			"First Inferred",
+			"Body text on the first page running to a couple of lines so",
+			"the block classifies cleanly as a paragraph.",
+		}})).
+		AddPage(612, 792, testpdf.HeadingPage("F1", 10, 16, 13, [][]string{{
+			"Second Inferred",
+			"Body text on the second page, likewise more than one line",
+			"long so it reads as body text.",
+		}})).
+		AddNestedBookmark("Chapter One", 0, 720, "Section 1.1", 1, 720).
 		Build()
 }

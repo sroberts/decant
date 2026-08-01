@@ -19,7 +19,9 @@ func (c *Converter) buildChapters(doc *Document, rep *Report) ([]epub.Chapter, [
 	}
 
 	var chapters []epub.Chapter
-	var nav []epub.NavPoint
+	// headingRefs collects every heading in document order with the file it
+	// landed in, which the hierarchical TOC is built from afterward.
+	var headingRefs []headingRef
 
 	for gi, g := range groups {
 		title := chapterTitle(g, gi, doc)
@@ -31,22 +33,117 @@ func (c *Converter) buildChapters(doc *Document, rep *Report) ([]epub.Chapter, [
 			if pi > 0 {
 				id = fmt.Sprintf("%s-%d", baseID, pi+1)
 			}
+			href := "text/" + id + ".xhtml"
+
 			chapters = append(chapters, epub.Chapter{
 				ID:    id,
 				Title: title,
 				Body:  renderBlocks(part),
 			})
-			// Only the first part of a split chapter earns a TOC entry;
-			// continuation files are the same chapter.
-			if pi == 0 {
-				nav = append(nav, epub.NavPoint{
-					Title: title,
-					Href:  "text/" + id + ".xhtml",
+
+			for _, b := range part {
+				if b.Kind != KindHeading || strings.TrimSpace(b.Text) == "" {
+					continue
+				}
+				headingRefs = append(headingRefs, headingRef{
+					title: b.Text,
+					level: b.Level,
+					href:  href + "#" + b.ID,
+				})
+			}
+			// A chapter that contributes no heading still needs an entry, or
+			// it would be unreachable from the table of contents.
+			if pi == 0 && !partHasHeading(part) {
+				headingRefs = append(headingRefs, headingRef{
+					title: title,
+					level: 1,
+					href:  href,
 				})
 			}
 		}
 	}
-	return chapters, nav
+
+	return chapters, buildNav(headingRefs)
+}
+
+// headingRef is one heading with the file and anchor it serializes to.
+type headingRef struct {
+	title string
+	level int
+	href  string
+}
+
+func partHasHeading(blocks []Block) bool {
+	for _, b := range blocks {
+		if b.Kind == KindHeading && strings.TrimSpace(b.Text) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// buildNav turns a flat, document-ordered heading list into the nested TOC
+// spec section 4.9 calls for.
+//
+// Levels in real documents skip ranks: an h1 followed directly by an h3 is
+// common. Each heading nests under the closest preceding heading of a lower
+// level, which keeps the tree well formed without inventing empty entries.
+func buildNav(refs []headingRef) []epub.NavPoint {
+	if len(refs) == 0 {
+		return nil
+	}
+
+	// The tree is built from individually allocated nodes rather than nested
+	// slices. Holding pointers into a slice while appending to it would let a
+	// reallocation silently strand every child added through the stale
+	// pointer.
+	type node struct {
+		title    string
+		href     string
+		level    int
+		children []*node
+	}
+
+	var roots []*node
+	var stack []*node
+
+	for _, r := range refs {
+		lv := r.level
+		if lv < 1 {
+			lv = 1
+		}
+		n := &node{title: r.title, href: r.href, level: lv}
+
+		// Unwind to the nearest ancestor with a strictly lower level.
+		for len(stack) > 0 && stack[len(stack)-1].level >= lv {
+			stack = stack[:len(stack)-1]
+		}
+
+		if len(stack) == 0 {
+			roots = append(roots, n)
+		} else {
+			parent := stack[len(stack)-1]
+			parent.children = append(parent.children, n)
+		}
+		stack = append(stack, n)
+	}
+
+	var convert func([]*node) []epub.NavPoint
+	convert = func(ns []*node) []epub.NavPoint {
+		if len(ns) == 0 {
+			return nil
+		}
+		out := make([]epub.NavPoint, 0, len(ns))
+		for _, n := range ns {
+			out = append(out, epub.NavPoint{
+				Title:    n.title,
+				Href:     n.href,
+				Children: convert(n.children),
+			})
+		}
+		return out
+	}
+	return convert(roots)
 }
 
 // groupBlocks applies the --split-at boundary.

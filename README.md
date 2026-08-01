@@ -7,10 +7,10 @@ order. decant is a single static Go binary that recovers the second from the
 first, plus an importable library so a TUI can drive the same code path
 without shelling out.
 
-Status: **M1**. The conversion engine extracts text and reconstructs
-paragraphs end to end, and every output passes `epubcheck` with zero errors.
-Structure classification, images, and tables are not implemented yet; see
-[Milestones](#milestones).
+Status: **M2**. Text extraction, column detection, paragraph reconstruction,
+heading classification, and outline-driven chapter splitting all work end to
+end, and every output passes `epubcheck` with zero errors. Images and tables
+are not implemented yet; see [Milestones](#milestones).
 
 MIT licensed. Full design in [`spec.md`](spec.md).
 
@@ -128,24 +128,29 @@ model at any stage.
 - Page rotation, form XObject recursion, inline image skipping
 - Line assembly with space reconstruction; ligature, soft hyphen, and NFC
   normalization
+- Column detection from a per-row projection profile, with correct reading
+  order and full-width headings preserved across the gutter
+- Bottom-up block segmentation using horizontal overlap and running leading
 - Paragraph reconstruction from indent, leading, and terminal punctuation
+- Heading classification against a document-wide body font, ranked to h1-h6
+- PDF outline reconciliation, hierarchical TOC, chapter splitting at headings
 - Deterministic EPUB 3.3 output with an EPUB 2 NCX fallback
 - Encrypted, scanned, and malformed input detection with distinct exit codes
 - `convert`, `probe`, `meta`, and `version` subcommands
 
 ## Not implemented yet
 
-`--columns`, `--keep-headers`, `--no-dehyphenate`, and `--table-mode` are
-accepted and print a notice naming the milestone that implements them.
-`--jobs` is accepted but page processing is currently sequential.
+`--keep-headers`, `--no-dehyphenate`, and `--table-mode` are accepted and
+print a notice naming the milestone that implements them. `--jobs` is
+accepted but page processing is currently sequential.
 
 ## Milestones
 
 | | Scope | Status |
 |---|---|---|
 | M1 | Parse, glyph extraction, line assembly, plain paragraphs | done |
-| M2 | Block segmentation, column detection, headings, outline TOC, chapter splitting | next |
-| M3 | Image extraction, placement, re-encoding, figures and captions | |
+| M2 | Block segmentation, column detection, headings, outline TOC, chapter splitting | done |
+| M3 | Image extraction, placement, re-encoding, figures and captions | next |
 | M4 | Furniture removal, dehyphenation, footnotes, lists, blockquotes | |
 | M5 | Table detection, device profiles, conversion report, `probe` | partial |
 | M6 | Public API stabilization and CrossPoint TUI integration | |

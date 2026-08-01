@@ -50,6 +50,29 @@ type Config struct {
 	// BlockSizeChangeRatio is the relative font size change that breaks a
 	// block. Spec 4.4: 0.15.
 	BlockSizeChangeRatio float64
+
+	// Columns forces a column count. Zero detects from the projection
+	// profile; 1, 2, or 3 override it. Spec 3: --columns.
+	Columns int
+
+	// MaxColumns caps automatic detection. Spec 3 offers up to 3.
+	MaxColumns int
+
+	// GutterMinWidthSpaces is how many median space widths a whitespace band
+	// must span to count as a gutter. Spec 4.4: 2.
+	GutterMinWidthSpaces float64
+
+	// GutterMinHeightRatio is the fraction of text-carrying rows a band must
+	// be empty across to count as a gutter. Spec 4.4: 0.6.
+	GutterMinHeightRatio float64
+
+	// ColumnMinGlyphRatio is the minimum share of the page's glyphs each
+	// detected column must hold for the split to be believed.
+	//
+	// This guard is not in the spec. Section 4.4 notes the heuristic misfires
+	// on tables and figures; without it, a hanging indent or a run of centered
+	// headings can read as a gutter and shred a single-column page.
+	ColumnMinGlyphRatio float64
 }
 
 // DefaultConfig returns the documented defaults from spec section 4.
@@ -65,5 +88,10 @@ func DefaultConfig() Config {
 		BlockGapRatio:        1.5,
 		BlockOverlapRatio:    0.5,
 		BlockSizeChangeRatio: 0.15,
+		Columns:              0,
+		MaxColumns:           3,
+		GutterMinWidthSpaces: 2,
+		GutterMinHeightRatio: 0.6,
+		ColumnMinGlyphRatio:  0.1,
 	}
 }

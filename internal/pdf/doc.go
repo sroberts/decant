@@ -90,6 +90,16 @@ type Page struct {
 	baseCTM Matrix
 }
 
+// ToPageSpace converts a point from PDF user space to this page's space,
+// applying the crop box offset, the y-axis flip, and /Rotate.
+//
+// Outline destinations are the main caller: OutlineItem.Y is in user space
+// and has to come through here before it can be compared against block
+// bounds, which are in page space.
+func (p *Page) ToPageSpace(x, y float64) (float64, float64) {
+	return p.baseCTM.Apply(x, y)
+}
+
 // Document is an opened PDF.
 type Document struct {
 	ctx   *model.Context

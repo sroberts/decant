@@ -33,6 +33,9 @@ type bookmark struct {
 	title string
 	page  int
 	y     float64
+	// child, when set, is a single nested bookmark under this one. One level
+	// is enough to exercise outline depth handling.
+	child *bookmark
 }
 
 // New returns a Builder with Helvetica available as /F1.
@@ -81,6 +84,16 @@ func (b *Builder) AddBookmark(title string, pageIndex int, y float64) *Builder {
 	return b
 }
 
+// AddNestedBookmark adds a top-level outline entry with one child under it,
+// which exercises outline depth mapping onto heading levels.
+func (b *Builder) AddNestedBookmark(title string, page int, y float64, childTitle string, childPage int, childY float64) *Builder {
+	b.outline = append(b.outline, bookmark{
+		title: title, page: page, y: y,
+		child: &bookmark{title: childTitle, page: childPage, y: childY},
+	})
+	return b
+}
+
 // TextPage is a convenience helper: it lays out lines of text down the page
 // in one font at one size, starting at (x, top) in PDF user space and
 // stepping down by leading.
@@ -123,6 +136,84 @@ func RotatedTextPage(font string, size, x, top, leading float64, lines []string)
 	return sb.String()
 }
 
+// TwoColumnPage lays out two columns of text side by side, optionally under a
+// full-width heading that spans both.
+//
+// Column geometry mirrors a typical academic paper: a gutter roughly two em
+// wide between columns of equal measure.
+func TwoColumnPage(font string, size, leading float64, heading string, left, right []string) string {
+	var sb strings.Builder
+	sb.WriteString("BT\n")
+	fmt.Fprintf(&sb, "/%s %g Tf\n", font, size)
+	fmt.Fprintf(&sb, "%g TL\n", leading)
+
+	top := 720.0
+	if heading != "" {
+		// The heading is one continuous run across the whole measure, so it
+		// carries no inter-glyph gap at the gutter and must survive splitting.
+		fmt.Fprintf(&sb, "1 0 0 1 %g %g Tm\n", 72.0, top)
+		fmt.Fprintf(&sb, "(%s) Tj\n", escapeString(heading))
+		top -= leading * 2
+	}
+
+	const leftX, rightX = 72.0, 320.0
+	for _, col := range []struct {
+		x     float64
+		lines []string
+	}{{leftX, left}, {rightX, right}} {
+		fmt.Fprintf(&sb, "1 0 0 1 %g %g Tm\n", col.x, top)
+		for i, l := range col.lines {
+			if i > 0 {
+				sb.WriteString("T*\n")
+			}
+			fmt.Fprintf(&sb, "(%s) Tj\n", escapeString(l))
+		}
+	}
+	sb.WriteString("ET\n")
+	return sb.String()
+}
+
+// HeadingPage lays out a document with headings at larger sizes interleaved
+// with body text, which is what structure classification keys on.
+//
+// Each section is a heading line at headingSize followed by its body lines at
+// bodySize, in the same font.
+func HeadingPage(font string, bodySize, headingSize, leading float64, sections [][]string) string {
+	return HeadingPageAt(font, bodySize, headingSize, leading, 720, sections)
+}
+
+// HeadingPageAt is HeadingPage with an explicit starting baseline in user
+// space, so several calls can stack down one page without overlapping.
+func HeadingPageAt(font string, bodySize, headingSize, leading, startY float64, sections [][]string) string {
+	var sb strings.Builder
+	sb.WriteString("BT\n")
+	y := startY
+
+	for _, sec := range sections {
+		if len(sec) == 0 {
+			continue
+		}
+		fmt.Fprintf(&sb, "/%s %g Tf\n", font, headingSize)
+		fmt.Fprintf(&sb, "1 0 0 1 %g %g Tm\n", 72.0, y)
+		fmt.Fprintf(&sb, "(%s) Tj\n", escapeString(sec[0]))
+		y -= headingSize * 1.6
+
+		fmt.Fprintf(&sb, "/%s %g Tf\n", font, bodySize)
+		fmt.Fprintf(&sb, "%g TL\n", leading)
+		fmt.Fprintf(&sb, "1 0 0 1 %g %g Tm\n", 72.0, y)
+		for i, l := range sec[1:] {
+			if i > 0 {
+				sb.WriteString("T*\n")
+			}
+			fmt.Fprintf(&sb, "(%s) Tj\n", escapeString(l))
+			y -= leading
+		}
+		y -= leading
+	}
+	sb.WriteString("ET\n")
+	return sb.String()
+}
+
 // escapeString escapes a Go string for a PDF literal string operand.
 func escapeString(s string) string {
 	r := strings.NewReplacer(`\`, `\\`, "(", `\(`, ")", `\)`)
@@ -154,9 +245,27 @@ func (b *Builder) Build() []byte {
 	outlineRootNr := infoNr + 1
 	firstOutlineNr := outlineRootNr + 1
 
+	// Outline objects: one per top-level bookmark, plus one per child.
+	type onode struct {
+		bm    bookmark
+		objNr int
+		child int // object number of the nested bookmark, 0 when none
+	}
+	var onodes []onode
+	nextObj := firstOutlineNr
+	for _, bm := range b.outline {
+		n := onode{bm: bm, objNr: nextObj}
+		nextObj++
+		if bm.child != nil {
+			n.child = nextObj
+			nextObj++
+		}
+		onodes = append(onodes, n)
+	}
+
 	totalObjs := infoNr
 	if len(b.outline) > 0 {
-		totalObjs = firstOutlineNr + len(b.outline) - 1
+		totalObjs = nextObj - 1
 	}
 
 	var buf bytes.Buffer
@@ -235,25 +344,34 @@ func (b *Builder) Build() []byte {
 	obj(infoNr, info.String())
 
 	// Outline.
-	if len(b.outline) > 0 {
+	if len(onodes) > 0 {
 		obj(outlineRootNr, fmt.Sprintf(
 			"<< /Type /Outlines /First %d 0 R /Last %d 0 R /Count %d >>",
-			firstOutlineNr, firstOutlineNr+len(b.outline)-1, len(b.outline)))
+			onodes[0].objNr, onodes[len(onodes)-1].objNr, len(onodes)))
 
-		for i, bm := range b.outline {
-			nr := firstOutlineNr + i
-			pageRef := firstPageNr + bm.page
+		for i, n := range onodes {
+			pageRef := firstPageNr + n.bm.page
 			body := fmt.Sprintf(
 				"<< /Title (%s) /Parent %d 0 R /Dest [%d 0 R /XYZ 0 %g 0]",
-				escapeString(bm.title), outlineRootNr, pageRef, bm.y)
+				escapeString(n.bm.title), outlineRootNr, pageRef, n.bm.y)
 			if i > 0 {
-				body += fmt.Sprintf(" /Prev %d 0 R", nr-1)
+				body += fmt.Sprintf(" /Prev %d 0 R", onodes[i-1].objNr)
 			}
-			if i < len(b.outline)-1 {
-				body += fmt.Sprintf(" /Next %d 0 R", nr+1)
+			if i < len(onodes)-1 {
+				body += fmt.Sprintf(" /Next %d 0 R", onodes[i+1].objNr)
+			}
+			if n.child != 0 {
+				body += fmt.Sprintf(" /First %d 0 R /Last %d 0 R /Count 1", n.child, n.child)
 			}
 			body += " >>"
-			obj(nr, body)
+			obj(n.objNr, body)
+
+			if n.child != 0 {
+				c := n.bm.child
+				obj(n.child, fmt.Sprintf(
+					"<< /Title (%s) /Parent %d 0 R /Dest [%d 0 R /XYZ 0 %g 0] >>",
+					escapeString(c.title), n.objNr, firstPageNr+c.page, c.y))
+			}
 		}
 	}
 

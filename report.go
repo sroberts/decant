@@ -38,6 +38,8 @@ type PageMetrics struct {
 	// Lines and Blocks count the stage 3 and stage 4 output.
 	Lines  int `json:"lines"`
 	Blocks int `json:"blocks"`
+	// Columns is the number of text columns detected on the page.
+	Columns int `json:"columns"`
 	// RotatedDropped counts rotated runs discarded.
 	RotatedDropped int `json:"rotated_dropped"`
 	// UsedInvisibleText marks a page whose only text was a mode-3 layer,
@@ -67,6 +69,13 @@ type Report struct {
 
 	// Blocks counts blocks by kind.
 	Blocks map[BlockKind]int `json:"blocks"`
+	// Headings counts headings by level, indexed 1 through 6.
+	Headings map[int]int `json:"headings,omitempty"`
+	// BodyFont describes the document's computed body font, which every
+	// structure decision in spec section 4.6 is measured against.
+	BodyFont string `json:"body_font,omitempty"`
+	// MultiColumnPages counts pages where more than one column was detected.
+	MultiColumnPages int `json:"multi_column_pages"`
 	// Chapters is the number of XHTML files written.
 	Chapters int `json:"chapters"`
 	// OutputBytes is the size of the EPUB.
@@ -83,8 +92,9 @@ type Report struct {
 
 func newReport(source string) *Report {
 	return &Report{
-		Source: source,
-		Blocks: map[BlockKind]int{},
+		Source:   source,
+		Blocks:   map[BlockKind]int{},
+		Headings: map[int]int{},
 	}
 }
 

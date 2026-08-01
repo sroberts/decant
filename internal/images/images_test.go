@@ -366,3 +366,93 @@ func TestProcessIsDeterministic(t *testing.T) {
 		t.Error("two runs produced different bytes")
 	}
 }
+
+func TestLineArtClassifiedBeforeReduction(t *testing.T) {
+	// The classification must run on the source image. Each reduction
+	// destroys the evidence in a different direction, so deciding afterwards
+	// gets it wrong in a way that depends on which reductions are enabled.
+
+	// Grayscale leaves at most 256 values, so a photograph would look like
+	// line art if classified after it.
+	cfg := DefaultConfig()
+	cfg.Mode = ModeGrayscale
+	got, err := Process(cfg, Source{Encoded: encodePNG(t, noisy(64, 64)), Format: "png"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.MediaType != "image/jpeg" {
+		t.Errorf("a grayscaled photograph became %s; classification ran after "+
+			"the colour reduction", got.MediaType)
+	}
+
+	// Smooth resampling interpolates new colours, so a chart would look like
+	// a photograph if classified after it.
+	cfg = DefaultConfig()
+	cfg.MaxWidth = 32
+	got, err = Process(cfg, Source{Encoded: encodePNG(t, chart(200, 200)), Format: "png"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.MediaType != "image/png" {
+		t.Errorf("a scaled chart became %s; classification ran after the "+
+			"resample", got.MediaType)
+	}
+
+	// Dithering scatters flat regions into noise, with the same effect.
+	cfg = DefaultConfig()
+	cfg.Dither = true
+	cfg.GrayLevels = 16
+	got, err = Process(cfg, Source{Encoded: encodePNG(t, chart(64, 64)), Format: "png"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.MediaType != "image/png" {
+		t.Errorf("a dithered chart became %s; classification ran after the "+
+			"dither", got.MediaType)
+	}
+}
+
+func TestLineArtScalesWithoutInterpolation(t *testing.T) {
+	// Nearest-neighbour keeps the palette exact. Catmull-Rom would blend
+	// across every edge and leave hundreds of intermediate colours, which
+	// both blurs the artwork and defeats the paletted PNG.
+	cfg := DefaultConfig()
+	cfg.MaxWidth = 64
+
+	got, err := Process(cfg, Source{Encoded: encodePNG(t, chart(256, 256)), Format: "png"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.MediaType != "image/png" {
+		t.Fatalf("MediaType = %q, want image/png", got.MediaType)
+	}
+
+	img, err := png.Decode(bytes.NewReader(got.Data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, ok := img.(*image.Paletted)
+	if !ok {
+		t.Fatalf("output is %T, want *image.Paletted", img)
+	}
+	// The source has four colours; interpolation would multiply that.
+	if len(p.Palette) > 8 {
+		t.Errorf("palette grew to %d entries; the resample interpolated",
+			len(p.Palette))
+	}
+}
+
+// chart builds a flat four-colour image, the shape of a diagram or plot.
+func chart(w, h int) *image.NRGBA {
+	img := image.NewNRGBA(image.Rect(0, 0, w, h))
+	palette := []color.NRGBA{
+		{255, 255, 255, 255}, {0, 0, 0, 255},
+		{200, 30, 30, 255}, {30, 30, 200, 255},
+	}
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			img.Set(x, y, palette[((x/16)+(y/16))%len(palette)])
+		}
+	}
+	return img
+}

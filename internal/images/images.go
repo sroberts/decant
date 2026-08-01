@@ -56,8 +56,14 @@ type Config struct {
 	// GrayLevels is the quantization depth when Dither is set. Spec 5.1: 16.
 	GrayLevels int
 
-	// ForceJPEG suppresses PNG output. Spec 5.1 does this for crosspoint,
-	// whose stock firmware documents only JPG and BMP.
+	// ForceJPEG suppresses PNG output entirely.
+	//
+	// Spec 5.1 originally set this for crosspoint on the strength of the
+	// stock firmware documenting only JPG and BMP. Reading the CrossPoint
+	// firmware settled it the other way (spec section 13, closed
+	// 2026-08-01): its EPUB image path decodes PNG, including the indexed
+	// form, and has no BMP decoder at all. Nothing sets this now; it remains
+	// for a reader that genuinely cannot take PNG.
 	ForceJPEG bool
 	// DitherQuality is the JPEG quality when Dither is set. Spec 5.1: 90.
 	DitherQuality int
@@ -139,19 +145,41 @@ func Process(cfg Config, src Source) (*Encoded, error) {
 		}, nil
 	}
 
+	// Whether this is line art is decided on the source image, before any
+	// reduction, and it drives everything that follows.
+	//
+	// It cannot be decided later. Every reduction destroys the evidence, each
+	// in a different direction. Grayscale conversion leaves at most 256
+	// distinct values by construction, so afterwards every grayscale image
+	// looks like line art and a photograph would ship as an enormous PNG.
+	// Smooth resampling interpolates new intermediate colours, so afterwards a
+	// 255-colour chart looks like a photograph. Dithering scatters flat
+	// regions into noise, with the same effect.
+	lineArt := false
+	if !cfg.ForceJPEG {
+		_, lineArt = collectPalette(img, cfg.UniqueColorThreshold)
+	}
+
 	if needsScale {
-		img = scale(img, cfg.MaxWidth)
+		img = scale(img, cfg.MaxWidth, lineArt)
 		b = img.Bounds()
 	}
 	if needsGray {
-		gray := toGray(img)
-		if cfg.Dither {
-			gray = floydSteinberg(gray, cfg.GrayLevels)
-		}
-		img = gray
+		img = toGray(img)
 	}
 
-	enc, err := encode(cfg, img)
+	var palette []color.Color
+	if lineArt {
+		// Re-collected because grayscale conversion changed the values; the
+		// count can only have fallen, so this still succeeds.
+		palette, _ = collectPalette(img, cfg.UniqueColorThreshold)
+	} else if cfg.Dither {
+		if gray, ok := img.(*image.Gray); ok {
+			img = floydSteinberg(gray, cfg.GrayLevels)
+		}
+	}
+
+	enc, err := encode(cfg, img, palette)
 	if err != nil {
 		return nil, err
 	}
@@ -192,9 +220,14 @@ func putInt(b []byte, v int) {
 	}
 }
 
-// scale resamples so the longest edge is at most maxEdge, using Catmull-Rom
-// as spec section 4.7 specifies.
-func scale(img image.Image, maxEdgePx int) image.Image {
+// scale resamples so the longest edge is at most maxEdge.
+//
+// Spec section 4.7 specifies Catmull-Rom, which is right for photographs.
+// Line art takes nearest-neighbour instead: Catmull-Rom interpolates new
+// colours across every edge, which blurs the artwork and destroys the palette
+// that makes PNG the right container for it. On a low-bit-depth E Ink panel
+// those interpolated edges are what banding is made of.
+func scale(img image.Image, maxEdgePx int, lineArt bool) image.Image {
 	b := img.Bounds()
 	w, h := b.Dx(), b.Dy()
 	if w <= 0 || h <= 0 {
@@ -217,7 +250,11 @@ func scale(img image.Image, maxEdgePx int) image.Image {
 	}
 
 	dst := image.NewNRGBA(image.Rect(0, 0, nw, nh))
-	xdraw.CatmullRom.Scale(dst, dst.Bounds(), img, b, xdraw.Src, nil)
+	filter := xdraw.Interpolator(xdraw.CatmullRom)
+	if lineArt {
+		filter = xdraw.NearestNeighbor
+	}
+	filter.Scale(dst, dst.Bounds(), img, b, xdraw.Src, nil)
 	return dst
 }
 
@@ -308,18 +345,13 @@ func floydSteinberg(src *image.Gray, levels int) *image.Gray {
 // art compresses far better and stays sharp as PNG, while a photograph would
 // balloon. The crosspoint profile forces JPEG regardless, because the stock
 // firmware documents only JPG and BMP.
-func encode(cfg Config, img image.Image) (*Encoded, error) {
+func encode(cfg Config, img image.Image, palette []color.Color) (*Encoded, error) {
 	quality := cfg.JPEGQuality
 	if cfg.Dither && cfg.DitherQuality > 0 {
 		quality = cfg.DitherQuality
 	}
 	if quality <= 0 || quality > 100 {
 		quality = 85
-	}
-
-	var palette []color.Color
-	if !cfg.ForceJPEG {
-		palette, _ = collectPalette(img, cfg.UniqueColorThreshold)
 	}
 
 	var buf bytes.Buffer

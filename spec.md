@@ -231,7 +231,7 @@ CSS stays under 50 lines: relative `em` sizing, no fixed widths, no embedded fon
 
 | Setting | standard | crosspoint | minimal |
 |---|---|---|---|
-| Image handling | keep, RGB | 16-level grayscale, JPEG only | drop |
+| Image handling | keep, RGB | 16-level grayscale; JPEG for photos, paletted PNG for line art | drop |
 | `--image-max-width` | 1600 | 480 | n/a |
 | `--max-chunk-bytes` | 262144 | 262144 | 65536 |
 | Table mode | auto | text | text |
@@ -247,13 +247,30 @@ The `crosspoint` profile targets the Xteink X4 running CrossPoint firmware. Stoc
 |---|---|---|
 | Display | 4.3 in E Ink, 220 PPI, 114 × 69 × 5.9 mm body | Panel is **480 × 800**, confirmed by the CrossPoint user guide. Portrait text column is 480 px wide, which sets `--image-max-width`. The X3 is 528 × 792 if that target ever matters |
 | CPU | ESP32-C3, roughly 380 KB usable RAM | Not a constraint on chunk size: the firmware streams XHTML rather than holding it. See the ceiling note below |
-| Image formats | stock firmware: JPG and BMP only | CrossPoint's in-EPUB decoder is unverified and may accept PNG. Assume JPEG until confirmed |
+| Image formats | stock firmware: JPG and BMP only | CrossPoint's EPUB path reads JPG and PNG, and has no BMP decoder. Confirmed by reading the firmware; see the codec note below |
 | Document formats | EPUB and TXT | EPUB 3 with NCX fallback stays correct |
 | Front light | none | No dark-mode or contrast CSS. Assume ambient light |
 | Touchscreen | none, page-turn buttons only | Navigation is linear. Flatten the TOC to two levels; deep nesting is unusable on two buttons |
 | Storage | microSD, 16 GB stock | File size is not a constraint. Per-file size is |
 
-**Image codec.** Section 4.7 selects PNG for line art on unique-color count. Under `crosspoint`, default to JPEG: quantize to 16 gray levels, apply Floyd-Steinberg dithering, then encode at q90. Dithering before JPEG limits ringing artifacts that a low-bit-depth panel otherwise renders as visible banding. Never emit BMP; it is uncompressed and wastes both card space and decode time. Revisit the PNG exclusion once someone reads CrossPoint's EPUB image path; the firmware accepts PNG for sleep screens, which suggests a decoder is already linked in.
+**Image codec.** Section 4.7 selects PNG for line art on unique-color count, and that selection stands under `crosspoint`. Photographs quantize to 16 gray levels, take Floyd-Steinberg dithering, and encode at q90; dithering before JPEG limits ringing artifacts that a low-bit-depth panel otherwise renders as visible banding. Never emit BMP.
+
+The PNG exclusion this section previously carried is withdrawn. Reading CrossPoint's EPUB image path settled it: `ImageDecoderFactory` dispatches on file extension to a `PNGdec`-backed decoder living in `lib/Epub/Epub/converters/`, and that decoder handles indexed PNG including palette transparency, which is the form line art takes. There is no BMP decoder in that path at all, so the stock firmware's "JPG and BMP" does not describe what CrossPoint reads from an EPUB: it reads JPG and PNG.
+
+The cost is heap, and it is the reason to keep the choice narrow rather than universal:
+
+| Decoder | Working set | Free heap required |
+|---|---|---|
+| JPEG | 20 KB | 36 KB |
+| PNG | 44 KB | 60 KB |
+
+Both fail closed, logging and skipping the image rather than crashing. Line art is where PNG earns that extra 24 KB: it is smaller as a paletted PNG than as a JPEG, and it stays sharp where JPEG would ring.
+
+Three consequences follow for the pipeline:
+
+- Line art is classified on the **source** image, before any reduction. Every reduction destroys the evidence in a different direction: grayscale conversion leaves at most 256 values so everything afterwards looks like line art, smooth resampling interpolates new colors so a chart afterwards looks like a photograph, and dithering scatters flat regions into noise with the same effect.
+- Line art scales with **nearest-neighbor**, not Catmull-Rom. Interpolating across every edge blurs the artwork and destroys the palette that makes PNG worth choosing.
+- Line art is **not** dithered. Dithering a flat region is noise on a diagram, and the 16-level quantization it exists to serve is a photographic concern.
 
 **What CrossPoint documents, and what it does not.**
 
@@ -389,10 +406,10 @@ GitHub Flow throughout: branch off `main` per milestone or fix, commit, push, op
 ## 13. Open Decisions
 
 1. **Vector graphics.** Charts drawn as paths currently vanish. Rasterizing arbitrary vector regions requires a rendering engine and pushes the project scope substantially.
-2. **CrossPoint in-EPUB image formats.** Stock firmware is JPG and BMP; CrossPoint decodes PNG for sleep screens, so the EPUB path may differ. Determines whether the profile can keep PNG for line art.
 
 **Closed:**
 
+- **CrossPoint in-EPUB image formats** (2026-08-01): the EPUB path reads JPG and PNG, so the `crosspoint` profile keeps paletted PNG for line art and uses dithered JPEG only for photographs. Settled by reading the firmware: `ImageDecoderFactory` dispatches by extension to a `PNGdec`-backed decoder that handles indexed PNG with palette transparency, and no BMP decoder exists in that path. PNG costs 24 KB more free heap than JPEG (60 KB against 36 KB) and fails closed, which is why the choice stays narrow. See section 5.1.
 - **CrossPoint XHTML size ceiling** (2026-08-01): not a memory constraint, and `--max-chunk-bytes` for the `crosspoint` profile is therefore 262144, the same as `standard`. Settled by reading the firmware rather than measuring: XHTML streams through expat in 1 KB chunks and pages are serialized to the SD card as they complete, so only a 12-byte-per-page lookup table scales with chapter length, about 0.9% of chapter bytes. The out-of-memory crashes in the release notes were the CSS parser, now guarded at 128 KB; decant emits under 1 KB of CSS. See section 5.1. The binding consideration is cache rebuild cost after a section-format bump, not RAM.
 - **Name, module path, license** (2026-08-01): `decant`, at `github.com/sroberts/decant`, MIT. Library and CLI ship from one repo.
 - **Encryption** (2026-08-01): out of scope for v1. Detect and exit 3.

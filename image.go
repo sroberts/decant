@@ -107,13 +107,20 @@ func (c *Converter) imagesConfig() images.Config {
 	cfg.MaxWidth = c.opts.ImageMaxWidth
 
 	if c.opts.Profile == ProfileCrossPoint {
-		// Spec 5.1: quantize to 16 gray levels, dither, then JPEG at q90.
-		// The panel is 4.3 inch E Ink with no front light, and the stock
-		// firmware documents only JPG and BMP.
+		// Spec 5.1: quantize to 16 gray levels, dither, then JPEG at q90, for
+		// a 4.3 inch E Ink panel with no front light.
+		//
+		// PNG is not suppressed. Section 5.1 excluded it because the stock
+		// firmware documents only JPG and BMP, and asked for that to be
+		// revisited once someone read CrossPoint's EPUB image path. Reading it
+		// settled the question (spec section 13, closed 2026-08-01):
+		// ImageDecoderFactory dispatches to a PNGdec-backed decoder that
+		// handles indexed PNG with palette transparency, and there is no BMP
+		// decoder in that path at all. Line art therefore stays PNG, where it
+		// is both smaller and sharp; only photographs dither to JPEG.
 		cfg.Dither = true
 		cfg.GrayLevels = 16
 		cfg.DitherQuality = 90
-		cfg.ForceJPEG = true
 	}
 	return cfg
 }

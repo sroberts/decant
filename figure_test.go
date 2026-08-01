@@ -303,9 +303,11 @@ func TestPhotographicImageEncodedAsJPEG(t *testing.T) {
 	}
 }
 
-func TestCrossPointProfileForcesGrayscaleJPEG(t *testing.T) {
-	// Spec 5.1: quantize to 16 gray levels, dither, encode JPEG at q90, and
-	// never emit PNG, because the stock firmware documents only JPG and BMP.
+func TestCrossPointKeepsPNGForLineArt(t *testing.T) {
+	// Spec section 13 closed the in-EPUB format question on 2026-08-01: the
+	// CrossPoint firmware's EPUB path decodes indexed PNG and has no BMP
+	// decoder, so line art stays PNG where it is both smaller and sharp. A
+	// regression to JPEG would mean that finding was lost.
 	src := testpdf.New().
 		AddImage("Im1", 40, 30, testpdf.SolidRGB(40, 30, 200, 30, 30)).
 		AddPage(612, 792,
@@ -323,10 +325,50 @@ func TestCrossPointProfileForcesGrayscaleJPEG(t *testing.T) {
 	if rep.ImagesPlaced != 1 {
 		t.Fatalf("ImagesPlaced = %d, want 1", rep.ImagesPlaced)
 	}
+	entries := imageEntries(t, data)
+	if !strings.HasSuffix(entries[0], ".png") {
+		t.Errorf("crosspoint emitted %s for line art, want PNG", entries[0])
+	}
 
+	img, _, err := image.Decode(bytes.NewReader(imageBytes(t, data, entries[0])))
+	if err != nil {
+		t.Fatalf("decoding output image: %v", err)
+	}
+	// Indexed, which is the form the firmware's decoder handles and the
+	// reason PNG is worth the extra heap it costs there.
+	if _, ok := img.(*image.Paletted); !ok {
+		t.Errorf("output is %T, want *image.Paletted", img)
+	}
+	if b := img.Bounds(); b.Dx() > 480 || b.Dy() > 480 {
+		t.Errorf("crosspoint image is %dx%d, above the 480px panel width",
+			b.Dx(), b.Dy())
+	}
+}
+
+func TestCrossPointDithersPhotographsToJPEG(t *testing.T) {
+	// The complementary case from spec 5.1: a photograph quantizes to 16 gray
+	// levels, dithers, and encodes JPEG, which is what keeps a low-bit-depth
+	// panel from banding.
+	src := testpdf.New().
+		AddImage("Im1", 64, 64, testpdf.GradientRGB(64, 64)).
+		AddPage(612, 792,
+			testpdf.TextPage("F1", 12, 72, 700, 15, []string{
+				"Body text so the page converts normally and the classifier",
+				"does not take it for a scan.",
+			})+testpdf.DrawImage("Im1", 100, 300, 300, 300)).
+		Build()
+
+	opts := defaultOpts()
+	opts.Profile = decant.ProfileCrossPoint
+	opts.ApplyProfileDefaults()
+
+	data, rep := buildDoc(t, src, opts)
+	if rep.ImagesPlaced != 1 {
+		t.Fatalf("ImagesPlaced = %d, want 1", rep.ImagesPlaced)
+	}
 	entries := imageEntries(t, data)
 	if !strings.HasSuffix(entries[0], ".jpg") {
-		t.Errorf("crosspoint emitted %s; the profile forces JPEG", entries[0])
+		t.Errorf("crosspoint emitted %s for a photograph, want JPEG", entries[0])
 	}
 
 	img, _, err := image.Decode(bytes.NewReader(imageBytes(t, data, entries[0])))

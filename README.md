@@ -48,7 +48,7 @@ path.
 
 | Setting | standard | crosspoint | minimal |
 |---|---|---|---|
-| Images | keep, RGB | 16-level grayscale, JPEG | drop |
+| Images | keep, RGB | 16-level grayscale; JPEG photos, PNG line art | drop |
 | Image max width | 1600 | 480 | n/a |
 | Max chunk bytes | 262144 | 262144 | 65536 |
 | Table mode | auto | text | text |
@@ -64,7 +64,12 @@ each laid-out page to the SD card as it completes, so a chapter never lands in
 RAM; only a 12-byte-per-page lookup table scales with its length, about 0.9%
 of the chapter's bytes. The out-of-memory crashes in its release notes were
 the CSS parser, now guarded at 128 KB, and decant emits under 1 KB of CSS. The
-profile therefore keeps the standard 256 KB chunk. See spec section 5.1.
+profile therefore keeps the standard 256 KB chunk.
+
+The same reading settled the image formats. CrossPoint's EPUB path decodes
+JPG and **PNG** — including the indexed form — and has no BMP decoder at all,
+so line art ships as a paletted PNG where it is smaller and stays sharp, and
+only photographs dither to JPEG. See spec section 5.1.
 
 ### Exit codes
 

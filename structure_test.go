@@ -371,13 +371,19 @@ func TestOutlineDepthSetsHeadingLevel(t *testing.T) {
 func TestTwoColumnReadingOrder(t *testing.T) {
 	// The core M2 case: an academic two-column page must read down the left
 	// column then down the right, not across.
+	// A real two-column page carries many rows; the ColumnMinRows guard
+	// deliberately refuses to trust a projection profile with fewer.
 	left := []string{
 		"Alpha one text here", "Alpha two text here", "Alpha three here",
 		"Alpha four text now", "Alpha five text now", "Alpha six text now",
+		"Alpha seven is here", "Alpha eight is here", "Alpha nine is now",
+		"Alpha ten text here", "Alpha eleven here", "Alpha twelve now",
 	}
 	right := []string{
 		"Beta one text here", "Beta two text here", "Beta three here",
 		"Beta four text now", "Beta five text now", "Beta six text now",
+		"Beta seven is here", "Beta eight is here", "Beta nine is now",
+		"Beta ten text here", "Beta eleven here", "Beta twelve now",
 	}
 	src := testpdf.New().
 		AddPage(612, 792, testpdf.TwoColumnPage("F1", 10, 13, "", left, right)).
@@ -408,11 +414,15 @@ func TestTwoColumnReadingOrder(t *testing.T) {
 func TestTwoColumnWithSpanningHeading(t *testing.T) {
 	left := []string{
 		"Alpha one text here", "Alpha two text here", "Alpha three here",
-		"Alpha four text now", "Alpha five text now",
+		"Alpha four text now", "Alpha five text now", "Alpha six text now",
+		"Alpha seven is here", "Alpha eight is here", "Alpha nine is now",
+		"Alpha ten text here", "Alpha eleven here", "Alpha twelve now",
 	}
 	right := []string{
 		"Beta one text here", "Beta two text here", "Beta three here",
-		"Beta four text now", "Beta five text now",
+		"Beta four text now", "Beta five text now", "Beta six text now",
+		"Beta seven is here", "Beta eight is here", "Beta nine is now",
+		"Beta ten text here", "Beta eleven here", "Beta twelve now",
 	}
 	src := testpdf.New().
 		AddPage(612, 792, testpdf.TwoColumnPage("F1", 10, 13,
@@ -433,8 +443,18 @@ func TestTwoColumnWithSpanningHeading(t *testing.T) {
 }
 
 func TestForcedColumnsOption(t *testing.T) {
-	left := []string{"Alpha one here", "Alpha two here", "Alpha three now"}
-	right := []string{"Beta one here", "Beta two here", "Beta three now"}
+	left := []string{
+		"Alpha one here", "Alpha two here", "Alpha three now",
+		"Alpha four here", "Alpha five here", "Alpha six now",
+		"Alpha seven here", "Alpha eight here", "Alpha nine now",
+		"Alpha ten here",
+	}
+	right := []string{
+		"Beta one here", "Beta two here", "Beta three now",
+		"Beta four here", "Beta five here", "Beta six now",
+		"Beta seven here", "Beta eight here", "Beta nine now",
+		"Beta ten here",
+	}
 	src := testpdf.New().
 		AddPage(612, 792, testpdf.TwoColumnPage("F1", 10, 13, "", left, right)).
 		Build()

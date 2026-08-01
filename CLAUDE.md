@@ -63,7 +63,8 @@ Pipeline: `parse → glyphs → lines → blocks → furniture → classify → 
 - **Page space runs y-down** from the top-left of the crop box, with `/Rotate` already applied by `baseCTM`. PDF user space is y-up. `OutlineItem.Y` is the one exception — it is still in user space and must be converted by the consumer.
 - **pdfcpu panics on hostile input.** `internal/pdf/doc.go` wraps every entry point in `recoverMalformed`, converting panics to `ErrMalformed`. `FuzzOpen` found a nil deref in `EnsurePageCount` within seconds. Do not remove those recovers, and add one to any new pdfcpu entry point.
 - **Never hold a pointer into a slice you are still appending to.** `buildNav` in `render.go` builds its tree from individually allocated nodes for exactly this reason: a reallocation would silently strand every child added through a stale pointer.
-- **Two heuristics are deliberately not in the spec**, both guards against the spec's rule misfiring, both tunable in `Heuristics`: `ColumnMinGlyphRatio` rejects a column split leaving a near-empty column, and `HeadingMaxWords` stops a long epigraph set slightly large from becoming a heading and splitting the book at it. Say so if you change them.
+- **Four heuristics are deliberately not in the spec**, all guards against the spec's rule misfiring, all tunable in `Heuristics`. `ColumnMinRows` (8) and `ColumnMinLines` (3) reject a column split the page has too little evidence for — asking whether a band is empty across 60% of rows is meaningless on a four-row title page, which is where the phantom gutters came from. `ColumnMinGlyphRatio` rejects a split leaving a near-empty column. `HeadingMaxWords` stops a long epigraph set slightly large from becoming a heading and splitting the book at it. Say so if you change them.
+- **TeX text fonts get the OT1 encoding** (`internal/pdf/encoding.go`). They are symbolic Type1 programs with no `/Encoding` and no `/ToUnicode`, and sfnt cannot parse Type1 to recover the built-in encoding, so nothing in the PDF says how to read them. Without OT1 every f-ligature and typographic quote in a LaTeX document becomes U+FFFD. `isTeXTextFont` excludes the math families (CMMI, CMSY, CMEX, MSAM…) — they use OML/OMS/OMX and OT1 would be actively wrong. **Math symbol extraction from TeX documents remains unsolved** and is the largest remaining source of decode failures on academic PDFs.
 
 ## Non-negotiable constraints
 
@@ -83,7 +84,20 @@ Violating one of these is a design regression, not a style nit.
 
 ## Testing approach
 
-Golden tests assert on extracted text plus a **structure fingerprint** (ordered element types and heading levels), never byte-identical XHTML, so formatting refactors don't churn the corpus. `internal/testpdf` builds synthetic fixtures in memory; the real corpus comes from Scott's library at build time.
+Golden tests assert on extracted text plus a **structure fingerprint** (ordered element types and heading levels), never byte-identical XHTML, so formatting refactors don't churn the corpus. `internal/testpdf` builds synthetic fixtures in memory.
+
+### The real-world corpus
+
+`make corpus` fetches [py-pdf/sample-files](https://github.com/py-pdf/sample-files) into `testdata/corpus/py-pdf`, pinned to a commit in the Makefile. **It is deliberately not vendored**: the files are CC-BY-SA-4.0 and spec §4.6 rules out carrying share-alike material in an MIT repo. Every corpus test skips when it is absent, so a fresh clone runs green; CI fetches it and enforces them.
+
+`testdata/corpus_manifest.json` is the regression gate — one entry per file recording outcome, block and heading counts, column count, a coarse decode-failure bucket, and fingerprint/text digests. Workflow: make a change, run `make manifest`, **read the diff**. Drift on a file you did not mean to touch is exactly what this exists to surface. The manifest is the tool for judging a heuristic change across 34 real documents instead of guessing from three fixtures — spec §11 warns that tuning against a handful of files produces overfitted garbage.
+
+Corpus tests, all in `corpus_test.go`:
+- `TestCorpusMatchesIndex` — page counts and encryption against the corpus's own `files.json`, an oracle from an independent implementation
+- `TestCorpusManifest` — the golden gate above
+- `TestCorpusDeterminism` — every file converted twice at different `--jobs`, byte-identical
+- `TestCorpusEPUBCheck` — epubcheck on all 25 convertible files
+- `TestCorpusReadingOrder` — extracted words must be a ≥70% in-order subsequence of `pdftotext` output, which is spec §10's property test. Skips multi-column documents (pdftotext orders columns differently) and documents with form fields (forms are out of scope per spec §1, and pdftotext interleaves widget values)
 
 Four fixture gotchas that already caused false failures:
 

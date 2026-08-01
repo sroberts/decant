@@ -137,7 +137,7 @@ func TestForcedColumnCount(t *testing.T) {
 }
 
 func TestSplitLinesAtGutters(t *testing.T) {
-	gs := twoColumnGlyphs("", bodyLines(6, "left"), bodyLines(6, "right"))
+	gs := twoColumnGlyphs("", bodyLines(12, "left"), bodyLines(12, "right"))
 	pc := &pdf.PageContent{Glyphs: gs}
 
 	pl := AssembleLines(DefaultConfig(), pc)
@@ -195,7 +195,7 @@ func TestFullWidthHeadingSurvivesSplitting(t *testing.T) {
 }
 
 func TestOrderLinesReadsColumnByColumn(t *testing.T) {
-	gs := twoColumnGlyphs("", bodyLines(5, "left"), bodyLines(5, "right"))
+	gs := twoColumnGlyphs("", bodyLines(12, "left"), bodyLines(12, "right"))
 	pl := AssembleLines(DefaultConfig(), &pdf.PageContent{Glyphs: gs})
 	cols := DetectColumns(DefaultConfig(), gs, nil)
 	if len(cols) != 2 {
@@ -227,7 +227,7 @@ func TestOrderLinesTreatsFullWidthAsBarrier(t *testing.T) {
 	// must not be reordered around it.
 	gs := twoColumnGlyphs(
 		"Section Heading Spanning The Entire Measure Of This Page Right Here",
-		bodyLines(6, "left"), bodyLines(6, "right"))
+		bodyLines(12, "left"), bodyLines(12, "right"))
 
 	pl := AssembleLines(DefaultConfig(), &pdf.PageContent{Glyphs: gs})
 	cols := DetectColumns(DefaultConfig(), gs, nil)

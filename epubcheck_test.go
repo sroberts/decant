@@ -174,13 +174,19 @@ func nestedHeadingDoc() []byte {
 
 // twoColumnDoc is the academic-paper shape: a spanning title over two columns.
 func twoColumnDoc() []byte {
+	// A real two-column page carries many rows; the ColumnMinRows guard
+	// deliberately refuses to trust a projection profile with fewer.
 	left := []string{
 		"Alpha one text here", "Alpha two text here", "Alpha three here",
 		"Alpha four text now", "Alpha five text now", "Alpha six text now",
+		"Alpha seven is here", "Alpha eight is here", "Alpha nine is now",
+		"Alpha ten text here", "Alpha eleven here", "Alpha twelve now",
 	}
 	right := []string{
 		"Beta one text here", "Beta two text here", "Beta three here",
 		"Beta four text now", "Beta five text now", "Beta six text now",
+		"Beta seven is here", "Beta eight is here", "Beta nine is now",
+		"Beta ten text here", "Beta eleven here", "Beta twelve now",
 	}
 	return testpdf.New().
 		SetInfo("Title", "Two Column Paper").

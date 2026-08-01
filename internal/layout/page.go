@@ -58,7 +58,37 @@ func AnalyzePage(cfg Config, pc *pdf.PageContent) *PageLayout {
 
 	out.Columns = DetectColumns(cfg, glyphs, pc.Fonts)
 	lines := SplitLinesAtGutters(cfg, pl.Lines, out.Columns, pc.Fonts)
+
+	// Final check on real evidence: a genuine column carries many lines. A
+	// ragged right edge, a bulleted list, or a run of short lines can all
+	// produce a plausible-looking gutter that no column actually fills, and
+	// acting on that would scramble the reading order of ordinary prose.
+	if len(out.Columns) > 1 && !columnsHaveEnoughLines(cfg, lines, out.Columns) {
+		out.Columns = []Column{{
+			MinX: out.Columns[0].MinX,
+			MaxX: out.Columns[len(out.Columns)-1].MaxX,
+		}}
+		lines = pl.Lines
+	}
+
 	out.Lines = OrderLines(lines, out.Columns)
 	out.Blocks = segmentBlocks(cfg, out.Lines, out.Columns)
 	return out
+}
+
+// columnsHaveEnoughLines reports whether every detected column holds at least
+// ColumnMinLines assembled lines. Full-width lines count toward no column.
+func columnsHaveEnoughLines(cfg Config, lines []Line, cols []Column) bool {
+	counts := make([]int, len(cols))
+	for _, l := range lines {
+		if c := columnOf(cols, l); c >= 0 && c < len(counts) {
+			counts[c]++
+		}
+	}
+	for _, n := range counts {
+		if n < cfg.ColumnMinLines {
+			return false
+		}
+	}
+	return true
 }

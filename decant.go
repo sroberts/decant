@@ -71,6 +71,8 @@ func layoutConfig(h Heuristics) layout.Config {
 		GutterMinWidthSpaces: h.GutterMinWidthSpaces,
 		GutterMinHeightRatio: h.GutterMinHeightRatio,
 		ColumnMinGlyphRatio:  h.ColumnMinGlyphRatio,
+		ColumnMinRows:        h.ColumnMinRows,
+		ColumnMinLines:       h.ColumnMinLines,
 	}
 }
 

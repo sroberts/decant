@@ -205,3 +205,73 @@ func TestNormalizeFamily(t *testing.T) {
 		}
 	}
 }
+
+func TestIsTeXTextFont(t *testing.T) {
+	cases := []struct {
+		name string
+		want bool
+	}{
+		// Text families use OT1.
+		{"CMR10", true},
+		{"NYYIGP+CMR10", true},
+		{"CMBX12", true},
+		{"CMTI10", true},
+		{"CMTT9", true},
+		{"CMSS17", true},
+		{"LMRoman10-Regular", true},
+		{"LMMono10-Regular", true},
+		// Math families use OML, OMS, or OMX and must be excluded, including
+		// the ones sharing a prefix with a text family.
+		{"CMMI10", false},
+		{"CMSY10", false},
+		{"CMEX10", false},
+		{"CMBSY10", false},
+		{"MSAM10", false},
+		{"MSBM10", false},
+		{"DZGOUJ+CMMI10", false},
+		// Not TeX at all.
+		{"Helvetica", false},
+		{"Times-Roman", false},
+		{"ArialMT", false},
+		{"", false},
+	}
+	for _, c := range cases {
+		if got := isTeXTextFont(c.name); got != c.want {
+			t.Errorf("isTeXTextFont(%q) = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestOT1Encoding(t *testing.T) {
+	// The f-ligature block is the reason this table exists: without it every
+	// ligature in a LaTeX document decodes to U+FFFD.
+	for code, want := range map[byte]rune{
+		0x0B: 'ﬀ', 0x0C: 'ﬁ', 0x0D: 'ﬂ', 0x0E: 'ﬃ', 0x0F: 'ﬄ',
+		0x10: 'ı', 0x11: 'ȷ',
+		// TeX diverges from ASCII at these positions.
+		0x22: '”', 0x27: '’', 0x3C: '¡', 0x3E: '¿',
+		0x5C: '“', 0x60: '‘', 0x7B: '–', 0x7C: '—',
+	} {
+		if got := OT1Encoding[code]; got != want {
+			t.Errorf("OT1Encoding[0x%02X] = %q, want %q", code, got, want)
+		}
+	}
+
+	// Letters and digits sit where ASCII puts them.
+	for c := byte('a'); c <= 'z'; c++ {
+		if got := OT1Encoding[c]; got != rune(c) {
+			t.Errorf("OT1Encoding[%q] = %q, want %q", c, got, rune(c))
+		}
+	}
+	for c := byte('0'); c <= '9'; c++ {
+		if got := OT1Encoding[c]; got != rune(c) {
+			t.Errorf("OT1Encoding[%q] = %q, want %q", c, got, rune(c))
+		}
+	}
+	// Every position must be defined; a gap would decode to U+FFFD.
+	for i := 0; i < 128; i++ {
+		if OT1Encoding[i] == 0 {
+			t.Errorf("OT1Encoding[0x%02X] is undefined", i)
+		}
+	}
+}

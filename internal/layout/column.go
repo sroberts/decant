@@ -149,7 +149,10 @@ func findGutters(cfg Config, glyphs []pdf.Glyph, fonts []*pdf.Font, minX, maxX, 
 			textRows++
 		}
 	}
-	if textRows == 0 {
+	// Too few rows to say anything about a band being "empty across 60% of
+	// the height". A title page or a figure page otherwise produces phantom
+	// gutters from whatever whitespace happens to line up.
+	if textRows < cfg.ColumnMinRows {
 		return nil
 	}
 

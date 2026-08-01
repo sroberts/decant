@@ -170,6 +170,31 @@ go vet ./... && staticcheck ./...
 `epubcheck` on `PATH` enables validation tests against generated output; they
 skip without it. CI installs it and enforces zero errors as a merge gate.
 
+### Real-world corpus
+
+```
+make corpus        # fetch py-pdf/sample-files, pinned to a commit
+make corpus-test   # run the corpus tests
+make manifest      # regenerate the golden, then review the diff
+```
+
+The corpus is [py-pdf/sample-files](https://github.com/py-pdf/sample-files):
+34 PDFs from pdfTeX, LibreOffice, Google Docs, ReportLab, PDFKit, and others,
+including a 117-page LaTeX book, a two-column paper, Arabic text, an
+encrypted file, and a damaged one. It is **not vendored** — those files are
+CC-BY-SA-4.0 and decant ships MIT — so it is fetched on demand and the tests
+skip without it.
+
+`testdata/corpus_manifest.json` records what decant produces for each file:
+outcome, block and heading counts, columns detected, a decode-failure bucket,
+and structure and text digests. It is the regression gate, and the tool for
+judging whether a heuristic change helps or hurts across real documents
+rather than across three fixtures.
+
+Current state: 25 files convert (23 with zero decode failures), 7 are
+correctly rejected as image-only with no text layer, 1 is correctly rejected
+as encrypted, and 1 damaged file is not yet recoverable.
+
 Fuzz targets cover the content stream lexer, the interpreter, the CMap
 parser, and the xref parser:
 

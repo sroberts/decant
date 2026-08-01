@@ -73,6 +73,23 @@ type Config struct {
 	// on tables and figures; without it, a hanging indent or a run of centered
 	// headings can read as a gutter and shred a single-column page.
 	ColumnMinGlyphRatio float64
+
+	// ColumnMinRows is the number of text-carrying rows a page must have
+	// before its projection profile is trusted at all.
+	//
+	// Also not in the spec, and the guard that matters most in practice. The
+	// profile asks whether a band is empty across 60% of rows; with four rows
+	// that question is meaningless, so title pages, part openers, and figure
+	// pages reliably produce phantom gutters.
+	ColumnMinRows int
+
+	// ColumnMinLines is the number of assembled lines each detected column
+	// must contain for the split to survive.
+	//
+	// Checked after lines are split at the gutters, which is stronger
+	// evidence than the glyph share: a real column carries many lines, while
+	// a ragged right edge or a bulleted list carries none on one side.
+	ColumnMinLines int
 }
 
 // DefaultConfig returns the documented defaults from spec section 4.
@@ -93,5 +110,7 @@ func DefaultConfig() Config {
 		GutterMinWidthSpaces: 2,
 		GutterMinHeightRatio: 0.6,
 		ColumnMinGlyphRatio:  0.1,
+		ColumnMinRows:        8,
+		ColumnMinLines:       3,
 	}
 }

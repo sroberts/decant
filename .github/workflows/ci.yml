@@ -56,6 +56,54 @@ jobs:
           go mod tidy
           git diff --exit-code go.mod go.sum
 
+  # Real-world corpus. py-pdf/sample-files is CC-BY-SA-4.0, so it is fetched
+  # here rather than vendored into this MIT repository. The job is pinned to a
+  # commit in the Makefile so results are reproducible; bump it deliberately
+  # and regenerate the manifest.
+  corpus:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          check-latest: true
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install epubcheck and poppler
+        run: sudo apt-get update && sudo apt-get install -y epubcheck poppler-utils
+
+      - name: Cache the corpus
+        uses: actions/cache@v4
+        with:
+          path: testdata/corpus/py-pdf
+          key: corpus-${{ hashFiles('Makefile') }}
+
+      - name: Fetch the corpus
+        run: make corpus
+
+      # The golden manifest is the regression gate: a structure fingerprint
+      # per file, per spec section 10. Drift on a file the change did not
+      # intend to touch is the signal this exists to produce.
+      - name: Corpus manifest
+        run: go test -run TestCorpusManifest ./...
+
+      - name: Corpus metadata matches the index
+        run: go test -run TestCorpusMatchesIndex ./...
+
+      - name: Corpus determinism
+        run: go test -run TestCorpusDeterminism ./...
+
+      - name: Corpus reading order against pdftotext
+        run: go test -run TestCorpusReadingOrder ./...
+
+      - name: Corpus epubcheck validation
+        run: go test -run TestCorpusEPUBCheck ./...
+
   fuzz:
     runs-on: ubuntu-latest
     steps:

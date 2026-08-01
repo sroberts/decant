@@ -1,0 +1,479 @@
+[
+  {
+    "path": "001-trivial/minimal-document.pdf",
+    "outcome": "ok",
+    "pages": 1,
+    "blocks": 2,
+    "kinds": {
+      "paragraph": 2
+    },
+    "chapters": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 100,
+    "fingerprint_sha": "4e79c6c362302682",
+    "fingerprint_head": "p p",
+    "text_sha": "4d9163acf93c335e"
+  },
+  {
+    "path": "002-trivial-libre-office-writer/002-trivial-libre-office-writer.pdf",
+    "outcome": "ok",
+    "pages": 1,
+    "blocks": 1,
+    "kinds": {
+      "paragraph": 1
+    },
+    "chapters": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 100,
+    "fingerprint_sha": "148de9c5a7a44d19",
+    "fingerprint_head": "p",
+    "text_sha": "a3614fe562b34839"
+  },
+  {
+    "path": "003-pdflatex-image/pdflatex-image.pdf",
+    "outcome": "ok",
+    "pages": 1,
+    "blocks": 4,
+    "kinds": {
+      "heading": 1,
+      "paragraph": 3
+    },
+    "headings": {
+      "1": 1
+    },
+    "chapters": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 100,
+    "fingerprint_sha": "04d0ceea1c417f9d",
+    "fingerprint_head": "h1 p p p",
+    "text_sha": "a632ae1859fdd2b9"
+  },
+  {
+    "path": "004-pdflatex-4-pages/pdflatex-4-pages.pdf",
+    "outcome": "ok",
+    "pages": 4,
+    "blocks": 8,
+    "kinds": {
+      "paragraph": 8
+    },
+    "chapters": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 98,
+    "warnings": 1,
+    "fingerprint_sha": "d1a921e610550819",
+    "fingerprint_head": "p p p p p p p p",
+    "text_sha": "26af7698897d07ae"
+  },
+  {
+    "path": "005-libreoffice-writer-password/libreoffice-writer-password.pdf",
+    "outcome": "encrypted"
+  },
+  {
+    "path": "006-pdflatex-outline/pdflatex-outline.pdf",
+    "outcome": "ok",
+    "pages": 4,
+    "blocks": 43,
+    "kinds": {
+      "heading": 10,
+      "paragraph": 33
+    },
+    "headings": {
+      "1": 10
+    },
+    "chapters": 10,
+    "multi_column_pages": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 100,
+    "fingerprint_sha": "beff6c75b2bf3686",
+    "fingerprint_head": "h1 p p p p p p p p p p p p p p p p p p p h1 p h1 p ...",
+    "text_sha": "264f3d34782978bd"
+  },
+  {
+    "path": "007-imagemagick-images/imagemagick-ASCII85Decode.pdf",
+    "outcome": "no_text_layer"
+  },
+  {
+    "path": "007-imagemagick-images/imagemagick-CCITTFaxDecode.pdf",
+    "outcome": "no_text_layer"
+  },
+  {
+    "path": "007-imagemagick-images/imagemagick-images.pdf",
+    "outcome": "no_text_layer"
+  },
+  {
+    "path": "007-imagemagick-images/imagemagick-lzw.pdf",
+    "outcome": "no_text_layer"
+  },
+  {
+    "path": "008-reportlab-inline-image/inline-image.pdf",
+    "outcome": "ok",
+    "pages": 1,
+    "blocks": 1,
+    "kinds": {
+      "paragraph": 1
+    },
+    "chapters": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 98,
+    "warnings": 1,
+    "fingerprint_sha": "148de9c5a7a44d19",
+    "fingerprint_head": "p",
+    "text_sha": "c9d04c9565fc665c"
+  },
+  {
+    "path": "009-pdflatex-geotopo/GeoTopo-komprimiert.pdf",
+    "outcome": "ok",
+    "pages": 117,
+    "blocks": 4673,
+    "kinds": {
+      "heading": 200,
+      "paragraph": 4473
+    },
+    "headings": {
+      "1": 16,
+      "2": 2,
+      "3": 33,
+      "4": 4,
+      "5": 1,
+      "6": 144
+    },
+    "chapters": 17,
+    "multi_column_pages": 50,
+    "decode_failure_bucket": "\u003c5%",
+    "quality_score": 61,
+    "warnings": 17,
+    "fingerprint_sha": "df81f94a80392a02",
+    "fingerprint_head": "h3 h3 p h1 p p h3 p p p p h3 p p p p p p h3 p p h6 p p ...",
+    "text_sha": "4ad89e20fad12d8f"
+  },
+  {
+    "path": "009-pdflatex-geotopo/GeoTopo.pdf",
+    "outcome": "ok",
+    "pages": 117,
+    "blocks": 4673,
+    "kinds": {
+      "heading": 200,
+      "paragraph": 4473
+    },
+    "headings": {
+      "1": 16,
+      "2": 2,
+      "3": 33,
+      "4": 4,
+      "5": 1,
+      "6": 144
+    },
+    "chapters": 17,
+    "multi_column_pages": 50,
+    "decode_failure_bucket": "\u003c5%",
+    "quality_score": 61,
+    "warnings": 17,
+    "fingerprint_sha": "df81f94a80392a02",
+    "fingerprint_head": "h3 h3 p h1 p p h3 p p p p h3 p p p p p p h3 p p h6 p p ...",
+    "text_sha": "4ad89e20fad12d8f"
+  },
+  {
+    "path": "010-pdflatex-forms/pdflatex-forms.pdf",
+    "outcome": "ok",
+    "pages": 1,
+    "blocks": 4,
+    "kinds": {
+      "paragraph": 4
+    },
+    "chapters": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 98,
+    "warnings": 1,
+    "fingerprint_sha": "9e9850f03ac4b919",
+    "fingerprint_head": "p p p p",
+    "text_sha": "2bde8b91dd9bc551"
+  },
+  {
+    "path": "011-google-doc-document/google-doc-document.pdf",
+    "outcome": "ok",
+    "pages": 1,
+    "blocks": 28,
+    "kinds": {
+      "heading": 2,
+      "paragraph": 26
+    },
+    "headings": {
+      "1": 1,
+      "2": 1
+    },
+    "chapters": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 100,
+    "fingerprint_sha": "54d15ce2cccf2267",
+    "fingerprint_head": "h1 p p p p p p p p p p p p p p p h2 p p p p p p p ...",
+    "text_sha": "a7f14035f0c16494"
+  },
+  {
+    "path": "012-libreoffice-form/libreoffice-form.pdf",
+    "outcome": "ok",
+    "pages": 1,
+    "blocks": 6,
+    "kinds": {
+      "heading": 1,
+      "paragraph": 5
+    },
+    "headings": {
+      "1": 1
+    },
+    "chapters": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 100,
+    "fingerprint_sha": "1890d1dd70e5dde4",
+    "fingerprint_head": "h1 p p p p p",
+    "text_sha": "eb17ea958fa9ca35"
+  },
+  {
+    "path": "013-reportlab-overlay/reportlab-overlay.pdf",
+    "outcome": "ok",
+    "pages": 1,
+    "blocks": 1,
+    "kinds": {
+      "paragraph": 1
+    },
+    "chapters": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 100,
+    "fingerprint_sha": "148de9c5a7a44d19",
+    "fingerprint_head": "p",
+    "text_sha": "f1aae9e2d6fbed59"
+  },
+  {
+    "path": "014-outlines/mistitled_outlines_example.pdf",
+    "outcome": "ok",
+    "pages": 4,
+    "blocks": 43,
+    "kinds": {
+      "heading": 10,
+      "paragraph": 33
+    },
+    "headings": {
+      "1": 10
+    },
+    "chapters": 10,
+    "multi_column_pages": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 100,
+    "fingerprint_sha": "beff6c75b2bf3686",
+    "fingerprint_head": "h1 p p p p p p p p p p p p p p p p p p p h1 p h1 p ...",
+    "text_sha": "264f3d34782978bd"
+  },
+  {
+    "path": "015-arabic/habibi-oneline-cmap.pdf",
+    "outcome": "ok",
+    "pages": 1,
+    "blocks": 1,
+    "kinds": {
+      "paragraph": 1
+    },
+    "chapters": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 100,
+    "fingerprint_sha": "148de9c5a7a44d19",
+    "fingerprint_head": "p",
+    "text_sha": "30a25bb9f280dd01"
+  },
+  {
+    "path": "015-arabic/habibi-rotated.pdf",
+    "outcome": "ok",
+    "pages": 4,
+    "blocks": 1,
+    "kinds": {
+      "paragraph": 1
+    },
+    "chapters": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 80,
+    "fingerprint_sha": "148de9c5a7a44d19",
+    "fingerprint_head": "p",
+    "text_sha": "30a25bb9f280dd01"
+  },
+  {
+    "path": "015-arabic/habibi.pdf",
+    "outcome": "ok",
+    "pages": 1,
+    "blocks": 1,
+    "kinds": {
+      "paragraph": 1
+    },
+    "chapters": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 100,
+    "fingerprint_sha": "148de9c5a7a44d19",
+    "fingerprint_head": "p",
+    "text_sha": "30a25bb9f280dd01"
+  },
+  {
+    "path": "016-libre-office-link/libre-office-link.pdf",
+    "outcome": "ok",
+    "pages": 1,
+    "blocks": 1,
+    "kinds": {
+      "paragraph": 1
+    },
+    "chapters": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 100,
+    "fingerprint_sha": "148de9c5a7a44d19",
+    "fingerprint_head": "p",
+    "text_sha": "be98a46bee0dff54"
+  },
+  {
+    "path": "017-unreadable-meta-data/unreadablemetadata.pdf",
+    "outcome": "malformed"
+  },
+  {
+    "path": "018-base64-image/base64image.pdf",
+    "outcome": "ok",
+    "pages": 1,
+    "blocks": 1,
+    "kinds": {
+      "paragraph": 1
+    },
+    "chapters": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 100,
+    "fingerprint_sha": "148de9c5a7a44d19",
+    "fingerprint_head": "p",
+    "text_sha": "df61357f75180589"
+  },
+  {
+    "path": "019-grayscale-image/grayscale-image.pdf",
+    "outcome": "no_text_layer"
+  },
+  {
+    "path": "020-xmp/output_with_metadata_pymupdf.pdf",
+    "outcome": "ok",
+    "pages": 1,
+    "blocks": 1,
+    "kinds": {
+      "paragraph": 1
+    },
+    "chapters": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 98,
+    "warnings": 1,
+    "fingerprint_sha": "148de9c5a7a44d19",
+    "fingerprint_head": "p",
+    "text_sha": "c98c24b677eff448"
+  },
+  {
+    "path": "021-pdfa/crazyones-pdfa.pdf",
+    "outcome": "ok",
+    "pages": 1,
+    "blocks": 9,
+    "kinds": {
+      "heading": 2,
+      "paragraph": 7
+    },
+    "headings": {
+      "1": 1,
+      "2": 1
+    },
+    "chapters": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 100,
+    "fingerprint_sha": "e14a6672f96f2ae5",
+    "fingerprint_head": "h1 h2 p p p p p p p",
+    "text_sha": "ccceb32f6b876fc5"
+  },
+  {
+    "path": "022-pdfkit/pdfkit.pdf",
+    "outcome": "ok",
+    "pages": 1,
+    "blocks": 2,
+    "kinds": {
+      "heading": 1,
+      "paragraph": 1
+    },
+    "headings": {
+      "1": 1
+    },
+    "chapters": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 100,
+    "fingerprint_sha": "ffc172cfdb81c8b7",
+    "fingerprint_head": "h1 p",
+    "text_sha": "70833848092dac58"
+  },
+  {
+    "path": "023-cmyk-image/cmyk-image.pdf",
+    "outcome": "no_text_layer"
+  },
+  {
+    "path": "024-annotations/annotated_pdf.pdf",
+    "outcome": "ok",
+    "pages": 1,
+    "blocks": 4,
+    "kinds": {
+      "paragraph": 4
+    },
+    "chapters": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 100,
+    "fingerprint_sha": "9e9850f03ac4b919",
+    "fingerprint_head": "p p p p",
+    "text_sha": "222d33c6b230abe8"
+  },
+  {
+    "path": "025-attachment/with-attachment.pdf",
+    "outcome": "ok",
+    "pages": 1,
+    "blocks": 2,
+    "kinds": {
+      "paragraph": 2
+    },
+    "chapters": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 100,
+    "fingerprint_sha": "4e79c6c362302682",
+    "fingerprint_head": "p p",
+    "text_sha": "4d9163acf93c335e"
+  },
+  {
+    "path": "026-latex-multicolumn/multicolumn.pdf",
+    "outcome": "ok",
+    "pages": 3,
+    "blocks": 28,
+    "kinds": {
+      "heading": 5,
+      "paragraph": 23
+    },
+    "headings": {
+      "1": 1,
+      "2": 1,
+      "3": 2,
+      "4": 1
+    },
+    "chapters": 1,
+    "multi_column_pages": 2,
+    "decode_failure_bucket": "none",
+    "quality_score": 100,
+    "fingerprint_sha": "44019edac566cdc8",
+    "fingerprint_head": "h1 h3 h3 h2 p p p p p p p p p p p p p p p p p p h4 p ...",
+    "text_sha": "9be54ab90d0d0160"
+  },
+  {
+    "path": "027-cropped-rotated-scaled/cropped-rotated-scaled.pdf",
+    "outcome": "ok",
+    "pages": 4,
+    "blocks": 4,
+    "kinds": {
+      "paragraph": 4
+    },
+    "chapters": 1,
+    "decode_failure_bucket": "none",
+    "quality_score": 80,
+    "fingerprint_sha": "9e9850f03ac4b919",
+    "fingerprint_head": "p p p p",
+    "text_sha": "4bd95919ee2d034a"
+  },
+  {
+    "path": "028-image-references-deduplication/wrong-references.pdf",
+    "outcome": "no_text_layer"
+  }
+]

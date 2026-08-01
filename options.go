@@ -144,6 +144,22 @@ type Heuristics struct {
 	// column nearly empty.
 	ColumnMinGlyphRatio float64
 
+	// ColumnMinRows is the number of text-carrying rows a page needs before
+	// its projection profile is trusted at all. Default 8.
+	//
+	// Not in the spec, and the guard that matters most in practice. Asking
+	// whether a band is empty across 60% of rows is meaningless on a page
+	// with four rows, so title pages and figure pages otherwise produce
+	// phantom gutters.
+	ColumnMinRows int
+
+	// ColumnMinLines is the number of assembled lines each detected column
+	// must contain for the split to survive. Default 3.
+	//
+	// Not in the spec. Checked after lines are split at the gutters, which is
+	// stronger evidence than the glyph share.
+	ColumnMinLines int
+
 	// HeadingSizeRatio is how far a block's font size must exceed the body
 	// font to be a heading. Default 0.15, meaning 15% larger.
 	HeadingSizeRatio float64
@@ -180,6 +196,8 @@ func DefaultHeuristics() Heuristics {
 		GutterMinWidthSpaces: 2,
 		GutterMinHeightRatio: 0.6,
 		ColumnMinGlyphRatio:  0.1,
+		ColumnMinRows:        8,
+		ColumnMinLines:       3,
 		HeadingSizeRatio:     0.15,
 		HeadingBoldMaxWords:  15,
 		HeadingMaxWords:      50,

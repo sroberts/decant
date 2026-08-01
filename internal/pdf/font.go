@@ -135,6 +135,15 @@ func (f *Font) loadSimple(xref *model.XRefTable, d types.Dict) {
 	base := &StandardEncoding
 	useBase := !f.Symbolic
 
+	// TeX text fonts are the exception: they are symbolic Type1 programs
+	// carrying no /Encoding and no /ToUnicode, and x/image/font/sfnt cannot
+	// parse Type1 to recover their built-in encoding. Nothing in the PDF says
+	// how to read them, so without OT1 every ligature and typographic quote
+	// in a LaTeX document becomes U+FFFD.
+	if isTeXTextFont(f.BaseFont) {
+		base, useBase = &OT1Encoding, true
+	}
+
 	encObj, _ := xref.Dereference(d["Encoding"])
 	switch e := encObj.(type) {
 	case types.Name:

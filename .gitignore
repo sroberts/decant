@@ -1,0 +1,7 @@
+/decant
+/dist/
+*.epub
+*.test
+*.out
+testdata/corpus/*.pdf
+!testdata/corpus/synthetic/*.pdf

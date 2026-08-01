@@ -158,6 +158,10 @@ func (c *Converter) analyzePage(src *pdf.Document, idx int, cache map[int]*pdf.P
 	if pc.Truncated {
 		rep.warn("glyphs", idx, "content stream exceeded the per-page glyph cap; page is incomplete")
 	}
+	if pc.Recovered {
+		rep.warn("glyphs", idx,
+			"content stream interpretation aborted on a parser fault; page text is incomplete or absent")
+	}
 
 	pl := layout.AssembleLines(c.cfg, pc)
 	m.Glyphs = pl.GlyphCount
@@ -245,7 +249,7 @@ func (c *Converter) detectScanned(ctx context.Context, src *pdf.Document, pages 
 		}
 		counts = append(counts, visible)
 
-		if has, _ := src.HasImages(page); has {
+		if src.HasImages(page) {
 			imaged++
 		}
 	}

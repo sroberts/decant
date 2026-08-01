@@ -54,7 +54,6 @@ type Font struct {
 
 	encoding  [256]rune       // simple font code->rune
 	diffNames map[byte]string // /Differences glyph names, for sfnt fallback
-	hasEnc    bool            // an /Encoding was present
 
 	widths   map[uint32]float64 // by code (simple) or CID (composite)
 	defWidth float64
@@ -134,19 +133,15 @@ func (f *Font) loadSimple(xref *model.XRefTable, d types.Dict) {
 	// encoding, which for an embedded TrueType means the font's own cmap; we
 	// leave the table empty there and let the sfnt fallback resolve codes.
 	base := &StandardEncoding
-	if f.hasStd && f.std.widths == &helveticaWidths {
-		base = &StandardEncoding
-	}
 	useBase := !f.Symbolic
 
 	encObj, _ := xref.Dereference(d["Encoding"])
 	switch e := encObj.(type) {
 	case types.Name:
 		if t, ok := encodingByName(e.Value()); ok {
-			base, useBase, f.hasEnc = t, true, true
+			base, useBase = t, true
 		}
 	case types.Dict:
-		f.hasEnc = true
 		if bn := nameOf(e, "BaseEncoding"); bn != "" {
 			if t, ok := encodingByName(bn); ok {
 				base, useBase = t, true

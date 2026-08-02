@@ -97,6 +97,8 @@ Golden tests assert on extracted text plus a **structure fingerprint** (ordered 
 
 `make corpus` fetches [py-pdf/sample-files](https://github.com/py-pdf/sample-files) into `testdata/corpus/py-pdf`, pinned to a commit in the Makefile. **It is deliberately not vendored**: the files are CC-BY-SA-4.0 and spec §4.6 rules out carrying share-alike material in an MIT repo. Every corpus test skips when it is absent, so a fresh clone runs green; CI fetches it and enforces them.
 
+**`pdftotext` is not ground truth.** It extracts text that displays sideways or upside down on a rotated page, and it renders form widget values; decant drops both deliberately. That is why recall against it is a *recorded* manifest bucket (`text_recall_bucket`) rather than an assertion — gating on it would demand decant reproduce text a reader cannot read. On `027-cropped-rotated-scaled` pdftotext gets 225 words to decant's 21, and rendering the pages confirms decant is right. Do not "fix" a low recall bucket without rendering the page first; spec §10 records the known cause of every bucket below 100%.
+
 `testdata/corpus_manifest.json` is the regression gate — one entry per file recording outcome, block and heading counts, column count, a coarse decode-failure bucket, and fingerprint/text digests. Workflow: make a change, run `make manifest`, **read the diff**. Drift on a file you did not mean to touch is exactly what this exists to surface. The manifest is the tool for judging a heuristic change across 34 real documents instead of guessing from three fixtures — spec §11 warns that tuning against a handful of files produces overfitted garbage.
 
 Corpus tests, all in `corpus_test.go`:
@@ -104,6 +106,7 @@ Corpus tests, all in `corpus_test.go`:
 - `TestCorpusManifest` — the golden gate above
 - `TestCorpusDeterminism` — every file converted twice at different `--jobs`, byte-identical
 - `TestCorpusEPUBCheck` — epubcheck on all 25 convertible files
+- `TestCorpusSerializationLosesNoText` — every word in `doc.Blocks` must reach the EPUB. Exact, no oracle, no threshold: stages 7–8 format text, they do not select it. This is the only content check that can be an assertion, and it covers what the reading-order test cannot see, since that one reads `doc.Blocks` and so is blind to loss in rendering or chunk splitting
 - `TestCorpusReadingOrder` — extracted words must be a ≥70% in-order subsequence of `pdftotext` output, which is spec §10's property test. Skips multi-column documents (pdftotext orders columns differently) and documents with form fields (forms are out of scope per spec §1, and pdftotext interleaves widget values)
 
 Four fixture gotchas that already caused false failures:

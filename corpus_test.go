@@ -144,6 +144,18 @@ type manifestEntry struct {
 	FingerprintHead string `json:"fingerprint_head,omitempty"`
 	// TextSHA digests the concatenated block text.
 	TextSHA string `json:"text_sha,omitempty"`
+
+	// TextRecallBucket is how much of pdftotext's text reached the EPUB,
+	// rounded to 5% so it does not churn on tokenization noise.
+	//
+	// It is recorded rather than asserted. pdftotext is a different tool
+	// making different decisions about what counts as content: it extracts
+	// text that displays sideways or upside down on a rotated page, and it
+	// renders form widget values. decant deliberately drops both. A gate
+	// would therefore demand decant reproduce text a reader cannot read.
+	// Tracking the number instead means a change that silently drops text
+	// shows up in the manifest diff, which is what this file is for.
+	TextRecallBucket string `json:"text_recall_bucket,omitempty"`
 }
 
 // analyzeCorpusFile runs a conversion and summarizes it into a manifest entry.
@@ -202,8 +214,57 @@ func analyzeCorpusFile(t *testing.T, path string) manifestEntry {
 	}
 	tsum := sha256.Sum256([]byte(textBuf.String()))
 	e.TextSHA = hex.EncodeToString(tsum[:])[:16]
+	e.TextRecallBucket = textRecallBucket(t, path, out.Bytes())
 
 	return e
+}
+
+// textRecallBucket measures how much of pdftotext's text reached the EPUB.
+//
+// Empty when pdftotext is unavailable, so the manifest stays comparable on a
+// machine without poppler; CI installs it. See TextRecallBucket for why this
+// is a recorded number rather than an assertion.
+func textRecallBucket(t *testing.T, path string, epubBytes []byte) string {
+	t.Helper()
+	bin, err := exec.LookPath("pdftotext")
+	if err != nil {
+		return ""
+	}
+	ref, err := exec.Command(bin, "-q", path, "-").Output()
+	if err != nil {
+		return ""
+	}
+	refWords := words(string(ref))
+	if len(refWords) < 10 {
+		return ""
+	}
+
+	have := map[string]int{}
+	for _, w := range words(epubText(t, epubBytes)) {
+		have[w]++
+	}
+	hit := 0
+	for _, w := range refWords {
+		if have[w] > 0 {
+			have[w]--
+			hit++
+		}
+	}
+	// Multiset recall, not set recall: counting distinct words would score a
+	// document that kept one copy of a repeated phrase as perfect.
+	return bucketPercent(float64(hit) / float64(len(refWords)))
+}
+
+// bucketPercent rounds to the nearest 5% so the manifest moves only on a
+// meaningful change, not on tokenization noise.
+func bucketPercent(r float64) string {
+	if r < 0 {
+		r = 0
+	}
+	if r > 1 {
+		r = 1
+	}
+	return itoa(int(r*20+0.5)*5) + "%"
 }
 
 // bucketRate coarsens a decode failure rate so the manifest only moves on a
@@ -615,4 +676,73 @@ func subsequenceRatio(got, ref []string) (float64, int) {
 		}
 	}
 	return float64(matched) / float64(len(got)), len(got)
+}
+
+// TestCorpusSerializationLosesNoText is the oracle-free half of spec section
+// 10's content check, run across every convertible real document.
+//
+// Stages 7 and 8 format text, they do not select it, so every word the block
+// tree holds must reach the EPUB. Unlike the reading-order property this
+// needs no external tool and no threshold, and unlike the manifest's recall
+// bucket it is an assertion: there is no legitimate reason for the serializer
+// to drop a word.
+func TestCorpusSerializationLosesNoText(t *testing.T) {
+	dir := corpusDir(t)
+
+	for _, rel := range corpusPDFs(t, dir) {
+		t.Run(rel, func(t *testing.T) {
+			path := filepath.Join(dir, filepath.FromSlash(rel))
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Skip(err)
+			}
+
+			conv, err := decant.New(defaultOpts())
+			if err != nil {
+				t.Fatal(err)
+			}
+			doc, err := conv.Analyze(context.Background(),
+				bytes.NewReader(data), int64(len(data)))
+			if err != nil {
+				t.Skipf("not convertible: %v", classify(err))
+			}
+
+			var out bytes.Buffer
+			if _, err := conv.Write(context.Background(), doc, &out); err != nil {
+				t.Skipf("not writable: %v", classify(err))
+			}
+
+			var blockText strings.Builder
+			for _, b := range doc.Blocks {
+				blockText.WriteString(b.Text)
+				blockText.WriteByte(' ')
+			}
+			want := words(blockText.String())
+			if len(want) < 10 {
+				t.Skip("too little text to compare")
+			}
+
+			have := map[string]int{}
+			for _, w := range words(epubText(t, out.Bytes())) {
+				have[w]++
+			}
+
+			var missing []string
+			for _, w := range want {
+				if have[w] > 0 {
+					have[w]--
+					continue
+				}
+				missing = append(missing, w)
+			}
+			if len(missing) > 0 {
+				n := len(missing)
+				if n > 12 {
+					n = 12
+				}
+				t.Errorf("%d of %d words did not survive serialization: %s",
+					len(missing), len(want), strings.Join(missing[:n], " "))
+			}
+		})
+	}
 }

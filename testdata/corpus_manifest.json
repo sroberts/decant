@@ -12,7 +12,8 @@
     "quality_score": 100,
     "fingerprint_sha": "4e79c6c362302682",
     "fingerprint_head": "p p",
-    "text_sha": "0b2823b9cab72dbd"
+    "text_sha": "0b2823b9cab72dbd",
+    "text_recall_bucket": "100%"
   },
   {
     "path": "002-trivial-libre-office-writer/002-trivial-libre-office-writer.pdf",
@@ -27,7 +28,8 @@
     "quality_score": 100,
     "fingerprint_sha": "148de9c5a7a44d19",
     "fingerprint_head": "p",
-    "text_sha": "a3614fe562b34839"
+    "text_sha": "a3614fe562b34839",
+    "text_recall_bucket": "100%"
   },
   {
     "path": "003-pdflatex-image/pdflatex-image.pdf",
@@ -47,7 +49,8 @@
     "quality_score": 100,
     "fingerprint_sha": "d11c2bbb52ec3707",
     "fingerprint_head": "h1 p figure p p",
-    "text_sha": "7481a0b288527e81"
+    "text_sha": "7481a0b288527e81",
+    "text_recall_bucket": "100%"
   },
   {
     "path": "004-pdflatex-4-pages/pdflatex-4-pages.pdf",
@@ -63,7 +66,8 @@
     "warnings": 1,
     "fingerprint_sha": "d1a921e610550819",
     "fingerprint_head": "p p p p p p p p",
-    "text_sha": "26af7698897d07ae"
+    "text_sha": "26af7698897d07ae",
+    "text_recall_bucket": "100%"
   },
   {
     "path": "005-libreoffice-writer-password/libreoffice-writer-password.pdf",
@@ -87,7 +91,8 @@
     "quality_score": 100,
     "fingerprint_sha": "beff6c75b2bf3686",
     "fingerprint_head": "h1 p p p p p p p p p p p p p p p p p p p h1 p h1 p ...",
-    "text_sha": "264f3d34782978bd"
+    "text_sha": "264f3d34782978bd",
+    "text_recall_bucket": "100%"
   },
   {
     "path": "007-imagemagick-images/imagemagick-ASCII85Decode.pdf",
@@ -150,7 +155,8 @@
     "warnings": 19,
     "fingerprint_sha": "737486a20e1e34e8",
     "fingerprint_head": "h3 h3 p h1 p p h3 p p p p h3 p p p p p p h3 p p table p p ...",
-    "text_sha": "adae31ddc16284de"
+    "text_sha": "adae31ddc16284de",
+    "text_recall_bucket": "75%"
   },
   {
     "path": "009-pdflatex-geotopo/GeoTopo.pdf",
@@ -181,7 +187,8 @@
     "warnings": 19,
     "fingerprint_sha": "737486a20e1e34e8",
     "fingerprint_head": "h3 h3 p h1 p p h3 p p p p h3 p p p p p p h3 p p table p p ...",
-    "text_sha": "adae31ddc16284de"
+    "text_sha": "adae31ddc16284de",
+    "text_recall_bucket": "75%"
   },
   {
     "path": "010-pdflatex-forms/pdflatex-forms.pdf",
@@ -217,7 +224,8 @@
     "quality_score": 100,
     "fingerprint_sha": "c01dc3399633a719",
     "fingerprint_head": "h1 p p p p p p p p p p p p p p p table p p p",
-    "text_sha": "ea438a366caa4cf8"
+    "text_sha": "ea438a366caa4cf8",
+    "text_recall_bucket": "95%"
   },
   {
     "path": "012-libreoffice-form/libreoffice-form.pdf",
@@ -236,7 +244,8 @@
     "quality_score": 100,
     "fingerprint_sha": "1890d1dd70e5dde4",
     "fingerprint_head": "h1 p p p p p",
-    "text_sha": "eb17ea958fa9ca35"
+    "text_sha": "eb17ea958fa9ca35",
+    "text_recall_bucket": "90%"
   },
   {
     "path": "013-reportlab-overlay/reportlab-overlay.pdf",
@@ -271,7 +280,8 @@
     "quality_score": 100,
     "fingerprint_sha": "beff6c75b2bf3686",
     "fingerprint_head": "h1 p p p p p p p p p p p p p p p p p p p h1 p h1 p ...",
-    "text_sha": "264f3d34782978bd"
+    "text_sha": "264f3d34782978bd",
+    "text_recall_bucket": "100%"
   },
   {
     "path": "015-arabic/habibi-oneline-cmap.pdf",
@@ -301,7 +311,8 @@
     "quality_score": 80,
     "fingerprint_sha": "148de9c5a7a44d19",
     "fingerprint_head": "p",
-    "text_sha": "30a25bb9f280dd01"
+    "text_sha": "30a25bb9f280dd01",
+    "text_recall_bucket": "0%"
   },
   {
     "path": "015-arabic/habibi.pdf",
@@ -391,7 +402,8 @@
     "quality_score": 100,
     "fingerprint_sha": "e14a6672f96f2ae5",
     "fingerprint_head": "h1 h2 p p p p p p p",
-    "text_sha": "ccceb32f6b876fc5"
+    "text_sha": "ccceb32f6b876fc5",
+    "text_recall_bucket": "100%"
   },
   {
     "path": "022-pdfkit/pdfkit.pdf",
@@ -456,7 +468,8 @@
     "quality_score": 100,
     "fingerprint_sha": "4e79c6c362302682",
     "fingerprint_head": "p p",
-    "text_sha": "0b2823b9cab72dbd"
+    "text_sha": "0b2823b9cab72dbd",
+    "text_recall_bucket": "100%"
   },
   {
     "path": "026-latex-multicolumn/multicolumn.pdf",
@@ -480,7 +493,8 @@
     "quality_score": 100,
     "fingerprint_sha": "8c00d8d4f01c2073",
     "fingerprint_head": "h1 h3 h3 h2 p p p p p p p p p p p p p p p p p p h4 p ...",
-    "text_sha": "143ec9b9659902f2"
+    "text_sha": "143ec9b9659902f2",
+    "text_recall_bucket": "100%"
   },
   {
     "path": "027-cropped-rotated-scaled/cropped-rotated-scaled.pdf",
@@ -495,7 +509,8 @@
     "quality_score": 80,
     "fingerprint_sha": "9e9850f03ac4b919",
     "fingerprint_head": "p p p p",
-    "text_sha": "4bd95919ee2d034a"
+    "text_sha": "4bd95919ee2d034a",
+    "text_recall_bucket": "10%"
   },
   {
     "path": "028-image-references-deduplication/wrong-references.pdf",

@@ -393,6 +393,16 @@ Stream page processing rather than holding every page's glyph set. Retain only t
 
 **Property tests.** Reading order preserves the sentence-level word sequence, verified against `pdftotext -layout` output for single-column documents. Determinism verified by converting twice at different `--jobs` values and diffing.
 
+**Content fidelity (M6).** "Does the EPUB still say what the PDF said" splits in two, and the halves need opposite treatment because only one has a trustworthy oracle.
+
+*Serialization is checked exactly.* Stages 7 and 8 format text; they do not select it. Every word the analyzed `Document` holds must therefore appear in the EPUB, so `TestSerializationLosesNoText` and `TestCorpusSerializationLosesNoText` assert equality with no external tool and no threshold. This covers the half the reading-order property cannot see: that test reads `doc.Blocks`, so text lost in rendering or chunk splitting is invisible to it. Both currently pass with zero loss on every fixture and all 25 convertible corpus documents.
+
+*Extraction is measured, not gated.* Recall against `pdftotext` is recorded in the corpus manifest as a bucketed percentage rather than asserted, because another PDF tool is not ground truth — it makes different decisions about what counts as content. On `027-cropped-rotated-scaled`, pdftotext extracts 225 words to decant's 21; rendering the pages shows the difference is text that displays sideways or upside down, which §4.3 drops deliberately and a reader could not read anyway. On `012-libreoffice-form` the difference is form widget values, out of scope per §1. A gate would demand decant reproduce both. Recording the number instead means a change that silently drops text moves the manifest, which is what the manifest is for.
+
+The buckets that are not 100% each have a known cause: math symbol fonts on `009-pdflatex-geotopo` (75%, the largest open decode gap), deliberate rotation drops (10% and 0%), form widgets (90%), and emoji plus phone-number formatting (95%). A bucket falling for any other reason is a regression.
+
+Comparison normalizes what carries no meaning: case, edge punctuation, private-use superscript sentinels, and XML entities. Inline elements (`sup`, `em`, `span`, …) are treated as zero-width and block elements as separators, matching how a reader sees the text — treating a `<sup>` as a space splits the word it sits inside and reports it as lost.
+
 **Fuzzing.** Native Go fuzzing against the content stream interpreter and xref parser. Malformed PDFs are a hostile input class; the parser must not panic or allocate unbounded.
 
 **Validation.** Run `epubcheck` in CI against every corpus output. Zero errors is a merge gate; warnings get triaged.

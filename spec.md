@@ -405,7 +405,11 @@ GitHub Flow throughout: branch off `main` per milestone or fix, commit, push, op
 
 ## 13. Open Decisions
 
-1. **Vector graphics.** Charts drawn as paths currently vanish. Rasterizing arbitrary vector regions requires a rendering engine and pushes the project scope substantially.
+1. **Vector graphics.** Charts drawn as paths are not rendered. They no longer vanish silently: the interpreter counts painted paths per page and the conversion report warns when a page carries more than `VectorMinPaints` of them, which principle 3 requires while the question stays open. On the sample corpus that fires on 39 of the 117 pages of the one mathematics textbook and on nothing else.
+
+    Two constraints have since narrowed the decision. Conversion to SVG is dead rather than merely out of scope: CrossPoint's EPUB path decodes JPG and PNG only (section 13, closed), so rasterizing to PNG is the only output that reaches the target device. And the rendering engine the original note worried about is largely present already: `golang.org/x/image/vector` is a pure-Go rasterizer under BSD-3 and `golang.org/x/image` is a direct dependency. What remains is Bézier flattening, fill rules, stroking, and the colour operators.
+
+    Table detection in section 4.8 requires interpreting `re` and `l` with stroke widths regardless, so M5 has to build path tracking whether or not vector artwork is ever rendered. Deciding this after that work, rather than before it, costs nothing and removes most of the estimate's uncertainty.
 
 **Closed:**
 

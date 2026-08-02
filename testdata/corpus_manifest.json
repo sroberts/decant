@@ -146,7 +146,7 @@
     "multi_column_pages": 50,
     "decode_failure_bucket": "\u003c5%",
     "quality_score": 61,
-    "warnings": 17,
+    "warnings": 18,
     "fingerprint_sha": "71fb6610f09c1d9e",
     "fingerprint_head": "h3 h3 p h1 p p h3 p p p p h3 p p p p p p h3 p p p list p ...",
     "text_sha": "4890b76abda68a1a"
@@ -176,7 +176,7 @@
     "multi_column_pages": 50,
     "decode_failure_bucket": "\u003c5%",
     "quality_score": 61,
-    "warnings": 17,
+    "warnings": 18,
     "fingerprint_sha": "71fb6610f09c1d9e",
     "fingerprint_head": "h3 h3 p h1 p p h3 p p p p h3 p p p p p p h3 p p p list p ...",
     "text_sha": "4890b76abda68a1a"

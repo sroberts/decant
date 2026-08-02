@@ -50,6 +50,14 @@ type interpreter struct {
 	glyphs []Glyph
 	images []ImageDraw
 
+	// path accumulates the extent of the path under construction, reset at
+	// each painting operator.
+	path      Rect
+	pathEmpty bool
+
+	vectorPaints int
+	vectorBounds Rect
+
 	// fontTable is the per-page list FontID indexes into.
 	fontTable []*Font
 	fontIndex map[FontRef]FontID
@@ -70,6 +78,17 @@ type PageContent struct {
 	// Recovered reports that interpretation aborted on a parser panic and
 	// the page's text is incomplete or absent.
 	Recovered bool
+
+	// VectorPaints counts painted path operations on the page, and
+	// VectorBounds is the union of their extents in page space.
+	//
+	// decant does not render vector artwork; spec section 1 puts conversion to
+	// SVG out of scope for v1 and section 13 keeps rasterization open. These
+	// exist so the loss is reported rather than silent, which spec principle 3
+	// requires. Only the aggregate is kept: table detection in M5 needs the
+	// individual segments and is where that geometry belongs.
+	VectorPaints int
+	VectorBounds Rect
 }
 
 // ImageDraw is one image painted on a page.
@@ -126,13 +145,16 @@ func Interpret(xref *model.XRefTable, fc *FontCache, content []byte, res types.D
 		fonts:     fc,
 		gs:        newGState(baseCTM),
 		fontIndex: map[FontRef]FontID{},
+		pathEmpty: true,
 	}
 	ip.run(content, res, 0)
 	return &PageContent{
-		Glyphs:    ip.glyphs,
-		Fonts:     ip.fontTable,
-		Images:    ip.images,
-		Truncated: ip.truncated,
+		Glyphs:       ip.glyphs,
+		Fonts:        ip.fontTable,
+		Images:       ip.images,
+		Truncated:    ip.truncated,
+		VectorPaints: ip.vectorPaints,
+		VectorBounds: ip.vectorBounds,
 	}
 }
 
@@ -284,6 +306,46 @@ func (ip *interpreter) exec(op string, args []object, res types.Dict, depth int,
 				}
 			}
 		}
+
+	// --- path construction ---
+	//
+	// Coordinates are collected only to bound the artwork for the dropped-
+	// vector diagnostic. A curve's control points bound its curve, so taking
+	// them verbatim is a safe over-estimate.
+	case "m", "l":
+		if len(args) >= 2 {
+			ip.addPathPoint(args[len(args)-2].float(), args[len(args)-1].float())
+		}
+	case "c":
+		if len(args) >= 6 {
+			for i := 0; i+1 < 6; i += 2 {
+				ip.addPathPoint(args[i].float(), args[i+1].float())
+			}
+		}
+	case "v", "y":
+		if len(args) >= 4 {
+			for i := 0; i+1 < 4; i += 2 {
+				ip.addPathPoint(args[i].float(), args[i+1].float())
+			}
+		}
+	case "re":
+		if len(args) >= 4 {
+			x, y := args[0].float(), args[1].float()
+			w, h := args[2].float(), args[3].float()
+			ip.addPathPoint(x, y)
+			ip.addPathPoint(x+w, y+h)
+		}
+	case "h":
+		// Close the subpath; adds no new geometry.
+
+	// --- path painting ---
+	//
+	// n paints nothing. It is the second half of the "W n" clipping idiom, so
+	// counting it would report every clip region as dropped artwork.
+	case "S", "s", "f", "F", "f*", "B", "B*", "b", "b*":
+		ip.paintPath()
+	case "n":
+		ip.resetPath()
 
 	// --- XObjects ---
 	case "Do":
@@ -491,6 +553,33 @@ func (ip *interpreter) showText(s []byte) {
 			ip.tm = Translate(tx, 0).Mul(ip.tm)
 		}
 	}
+}
+
+// addPathPoint folds a construction coordinate into the current path's
+// extent, transformed into page space.
+func (ip *interpreter) addPathPoint(x, y float64) {
+	px, py := ip.gs.ctm.Apply(x, y)
+	box := Rect{MinX: px, MinY: py, MaxX: px, MaxY: py}
+	if ip.pathEmpty {
+		ip.path = box
+		ip.pathEmpty = false
+		return
+	}
+	ip.path = ip.path.Union(box)
+}
+
+// paintPath records a painted path and starts a new one.
+func (ip *interpreter) paintPath() {
+	if !ip.pathEmpty {
+		ip.vectorPaints++
+		ip.vectorBounds = ip.vectorBounds.Union(ip.path)
+	}
+	ip.resetPath()
+}
+
+func (ip *interpreter) resetPath() {
+	ip.path = Rect{}
+	ip.pathEmpty = true
 }
 
 // maxImagesPerPage bounds image recording so a hostile content stream cannot

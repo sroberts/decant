@@ -529,3 +529,31 @@ func ListPage(font string, size, x, top, leading float64, markers []string, item
 	sb.WriteString("ET\n")
 	return sb.String()
 }
+
+// VectorPaths emits n painted path operations, which is what a chart or
+// diagram drawn with path operators leaves in a content stream.
+func VectorPaths(n int, x, y, size float64) string {
+	var sb strings.Builder
+	for i := 0; i < n; i++ {
+		off := float64(i) * 3
+		// A move, a line, and a cubic curve, then stroke: the shape a plotted
+		// series or a drawn figure leaves behind.
+		fmt.Fprintf(&sb, "%g %g m %g %g l %g %g %g %g %g %g c S\n",
+			x+off, y+off,
+			x+off+size, y+off,
+			x+off+size, y+off+size/2,
+			x+off+size/2, y+off+size,
+			x+off, y+off+size)
+	}
+	return sb.String()
+}
+
+// ClipPath emits the "W n" clipping idiom, which paints nothing and must not
+// be counted as dropped artwork.
+func ClipPath(n int, x, y, w, h float64) string {
+	var sb strings.Builder
+	for i := 0; i < n; i++ {
+		fmt.Fprintf(&sb, "q %g %g %g %g re W n Q\n", x, y, w, h)
+	}
+	return sb.String()
+}

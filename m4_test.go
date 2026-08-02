@@ -470,3 +470,87 @@ func bytesEqual(a, b []byte) bool {
 	}
 	return true
 }
+
+// --- dropped vector artwork ---
+
+// vectorDoc draws a diagram with path operators alongside real body text.
+func vectorDoc(paths int) []byte {
+	body := testpdf.TextPage("F1", 11, 72, 720, 14, []string{
+		"Body text above the diagram which runs to more than one line",
+		"so the page converts normally and is not taken for a scan.",
+	})
+	return testpdf.New().
+		SetInfo("Title", "Vector Document").
+		AddPage(612, 792, body+testpdf.VectorPaths(paths, 100, 300, 40)).
+		Build()
+}
+
+func TestDroppedVectorArtworkIsReported(t *testing.T) {
+	// Spec section 1 puts vector conversion out of scope for v1 and section 13
+	// keeps rasterization open, so a chart drawn as paths is lost. Principle 3
+	// requires that to be visible rather than silent.
+	doc := analyze(t, vectorDoc(40), defaultOpts())
+	rep := doc.Report()
+
+	if rep.VectorPagesDropped != 1 {
+		t.Errorf("VectorPagesDropped = %d, want 1", rep.VectorPagesDropped)
+	}
+	if rep.VectorPaintsDropped < 40 {
+		t.Errorf("VectorPaintsDropped = %d, want at least 40", rep.VectorPaintsDropped)
+	}
+
+	found := false
+	for _, d := range rep.Diagnostics {
+		if strings.Contains(d.Message, "vector artwork that was not rendered") {
+			found = true
+			if d.Severity != decant.SeverityWarning {
+				t.Errorf("severity is %q, want warning: losing a chart is not routine",
+					d.Severity)
+			}
+		}
+	}
+	if !found {
+		t.Error("no diagnostic recorded for the dropped artwork")
+	}
+
+	// The text must be unaffected.
+	if !strings.Contains(blockTexts(doc), "Body text above the diagram") {
+		t.Error("the body text was damaged")
+	}
+}
+
+func TestIncidentalPathsAreNotReported(t *testing.T) {
+	// Rules, underlines, and table borders are paths too. Reporting them as
+	// lost artwork would be noise a reader cannot act on.
+	doc := analyze(t, vectorDoc(3), defaultOpts())
+	if n := doc.Report().VectorPagesDropped; n != 0 {
+		t.Errorf("VectorPagesDropped = %d for a page with three rules, want 0", n)
+	}
+}
+
+func TestClipPathsAreNotArtwork(t *testing.T) {
+	// "W n" sets a clip and paints nothing. Counting it would report every
+	// clipped region, which is most pages that place an image.
+	body := testpdf.TextPage("F1", 11, 72, 720, 14, []string{
+		"Body text on a page that clips heavily but paints no artwork,",
+		"running to more than one line so it converts normally.",
+	})
+	src := testpdf.New().
+		AddPage(612, 792, body+testpdf.ClipPath(40, 100, 300, 200, 200)).
+		Build()
+
+	doc := analyze(t, src, defaultOpts())
+	if n := doc.Report().VectorPagesDropped; n != 0 {
+		t.Errorf("VectorPagesDropped = %d; the W n idiom paints nothing", n)
+	}
+}
+
+func TestVectorThresholdIsTunable(t *testing.T) {
+	opts := defaultOpts()
+	opts.Heuristics.VectorMinPaints = 2
+
+	doc := analyze(t, vectorDoc(3), opts)
+	if doc.Report().VectorPagesDropped != 1 {
+		t.Error("lowering VectorMinPaints did not lower the reporting threshold")
+	}
+}

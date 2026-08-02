@@ -246,6 +246,23 @@ type Heuristics struct {
 	// SuperscriptSizeRatio is the size ratio below which a raised glyph
 	// counts as a superscript. Default 0.85.
 	SuperscriptSizeRatio float64
+
+	// VectorMinPaints is the number of painted paths a page must carry before
+	// its vector artwork is reported as dropped content. Default 24.
+	//
+	// Not in the spec. Almost every PDF paints some paths for rules,
+	// underlines, table borders, and form fields; reporting those as lost
+	// artwork would be noise a reader cannot act on. A page actually drawing
+	// a diagram paints far more, and the distributions do not overlap: across
+	// the sample corpus incidental decoration runs from 7 to 20 paths per
+	// page, while a mathematics textbook full of geometry figures paints
+	// about forty. The default sits in that gap.
+	//
+	// The bias is deliberate. Reporting a form border as lost artwork is
+	// noise; missing a dropped chart is the silent content loss this
+	// diagnostic exists to end, so the threshold is set to catch artwork
+	// rather than to catch every path.
+	VectorMinPaints int
 }
 
 // DefaultHeuristics returns the documented defaults from spec section 4.
@@ -293,6 +310,7 @@ func DefaultHeuristics() Heuristics {
 		FootnoteSizeRatio:    0.1,
 		SuperscriptRiseEm:    0.2,
 		SuperscriptSizeRatio: 0.85,
+		VectorMinPaints:      24,
 	}
 }
 

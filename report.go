@@ -70,6 +70,9 @@ type PageMetrics struct {
 	// Images is the number of images placed from the page, after the drop
 	// rules in spec section 4.7.
 	Images int `json:"images"`
+	// VectorPaints counts painted path operations on the page. decant does
+	// not render vector artwork, so a high count means content was lost.
+	VectorPaints int `json:"vector_paints,omitempty"`
 	// RotatedDropped counts rotated runs discarded.
 	RotatedDropped int `json:"rotated_dropped"`
 	// UsedInvisibleText marks a page whose only text was a mode-3 layer,
@@ -115,6 +118,15 @@ type Report struct {
 	Hyphenation HyphenationReport `json:"hyphenation"`
 	// FurnitureRemoved counts blocks dropped as running heads or folios.
 	FurnitureRemoved int `json:"furniture_removed"`
+	// VectorPagesDropped counts pages carrying vector artwork that decant did
+	// not render, and VectorPaintsDropped the painted paths on them.
+	//
+	// Spec section 1 puts vector conversion out of scope for v1 and section
+	// 13 keeps rasterization open. Reporting the loss is what principle 3
+	// requires in the meantime: a chart drawn as paths otherwise disappears
+	// with no trace in the output or the report.
+	VectorPagesDropped  int `json:"vector_pages_dropped,omitempty"`
+	VectorPaintsDropped int `json:"vector_paints_dropped,omitempty"`
 	// Chapters is the number of XHTML files written.
 	Chapters int `json:"chapters"`
 	// OutputBytes is the size of the EPUB.

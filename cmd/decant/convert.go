@@ -230,6 +230,10 @@ func summarize(w io.Writer, rep *decant.Report, outPath string) {
 		fmt.Fprintf(w, "        removed %d running head(s) and page number(s)\n",
 			rep.FurnitureRemoved)
 	}
+	if rep.VectorPagesDropped > 0 {
+		fmt.Fprintf(w, "        %d page(s) carry vector artwork that was not rendered\n",
+			rep.VectorPagesDropped)
+	}
 	fmt.Fprintf(w, "        quality score %d/100", rep.QualityScore)
 	if n := rep.Warnings(); n > 0 {
 		fmt.Fprintf(w, ", %d warning(s)", n)

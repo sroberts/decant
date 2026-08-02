@@ -174,6 +174,11 @@ JPEG 2000 and JBIG2 images drop with a diagnostic: neither has a pure-Go
 decoder, and spec principle 2 rules out cgo. Inline (`BI`) images have their
 position recorded for scan detection but are not extracted.
 
+Vector artwork is not rendered, so a chart drawn as paths is lost. It is
+reported rather than dropped silently: the conversion report counts painted
+paths per page and warns when a page carries enough of them to be a diagram.
+Rasterization is spec §13's one remaining open decision.
+
 ## Milestones
 
 | | Scope | Status |

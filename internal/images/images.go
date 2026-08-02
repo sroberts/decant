@@ -206,10 +206,16 @@ func pixelDigest(img image.Image) string {
 	h.Write(hdr[:])
 
 	// NRGBA gives a stable byte layout across source image types, so two
-	// encodings of one picture hash alike.
-	rgba := image.NewNRGBA(image.Rect(0, 0, b.Dx(), b.Dy()))
-	draw.Draw(rgba, rgba.Bounds(), img, b.Min, draw.Src)
-	h.Write(rgba.Pix)
+	// encodings of one picture hash alike. Converting a row at a time rather
+	// than the whole image keeps the scratch buffer proportional to the width
+	// instead of the area: a 4000 by 3000 source needed 48 MB of temporary
+	// NRGBA against spec section 9's budget, and now needs 16 KB. The bytes
+	// fed to the hash are identical either way.
+	row := image.NewNRGBA(image.Rect(0, 0, b.Dx(), 1))
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		draw.Draw(row, row.Bounds(), img, image.Point{X: b.Min.X, Y: y}, draw.Src)
+		h.Write(row.Pix)
+	}
 	return hex.EncodeToString(h.Sum(nil))
 }
 
@@ -249,7 +255,21 @@ func scale(img image.Image, maxEdgePx int, lineArt bool) image.Image {
 		nh = 1
 	}
 
-	dst := image.NewNRGBA(image.Rect(0, 0, nw, nh))
+	// The destination is RGBA rather than NRGBA for speed, and it is also the
+	// more correct of the two.
+	//
+	// x/image/draw generates a fast path per concrete destination type and
+	// falls back to a generic RGBA64Image path otherwise. NRGBA has no
+	// generated path, so the vertical pass ran through the fallback: on the
+	// corpus's largest photograph that made scaling 13% of the whole
+	// conversion, and the profile showed scaleX taking the RGBA fast path
+	// while scaleY did not.
+	//
+	// Resampling premultiplied values is also what compositing requires.
+	// Averaging non-premultiplied colour across a partly transparent edge
+	// weights fully transparent pixels as though they were opaque, which
+	// fringes the edge with whatever colour happens to sit under the alpha.
+	dst := image.NewRGBA(image.Rect(0, 0, nw, nh))
 	filter := xdraw.Interpolator(xdraw.CatmullRom)
 	if lineArt {
 		filter = xdraw.NearestNeighbor
@@ -359,7 +379,11 @@ func encode(cfg Config, img image.Image, palette []color.Color) (*Encoded, error
 		// Line art. Palettizing is the whole reason PNG wins here: Go's
 		// encoder otherwise writes full RGBA, which turned a 255-colour test
 		// chart into 1.7 MB where the paletted form is a fraction of that.
-		enc := png.Encoder{CompressionLevel: png.BestCompression}
+		// DefaultCompression rather than BestCompression. Across the corpus
+		// the strongest level buys 0.05% of output size for 4% of conversion
+		// time, which is the wrong trade for a format already carrying most
+		// of its win in the palette.
+		enc := png.Encoder{CompressionLevel: png.DefaultCompression}
 		if err := enc.Encode(&buf, palettize(img, palette)); err != nil {
 			return nil, fmt.Errorf("images: encoding PNG: %w", err)
 		}

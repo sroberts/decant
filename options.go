@@ -1,9 +1,3 @@
-// Package decant reconstructs semantic, reflowable EPUB 3 from fixed-layout
-// PDF.
-//
-// The conversion engine lives here and the decant command is a thin wrapper
-// over it. Analyze and Write are separate so a caller can inspect and correct
-// the block tree before committing the EPUB.
 package decant
 
 import (

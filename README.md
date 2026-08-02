@@ -109,7 +109,38 @@ fmt.Println(report.QualityScore) // 0 to 100, a triage signal
 preview detected structure and fix it first.
 
 Everything below the root package is under `internal/`, so the public surface
-stays small. Treat the API as unstable until `v1.0.0`.
+stays small. Full documentation and runnable examples are on
+[pkg.go.dev](https://pkg.go.dev/github.com/sroberts/decant).
+
+### API stability
+
+The API is unstable until `v1.0.0`, which is cut at M6 once the CrossPoint
+TUI has exercised `Analyze` and `Write` against real files. From `v1.0.0`,
+normal Go compatibility applies to the root package, and these behaviours are
+part of the contract rather than incidental:
+
+- `Write` does not mutate the `Document` and does not accumulate into the
+  `Report`, so it may be called repeatedly on one tree. A TUI writes a
+  preview, keeps editing, and writes again.
+- A `Converter` holds no mutable state and is reusable across documents.
+- Edits to `Document.Blocks` reach the output. Heading levels drive chapter
+  splitting and the navigation document.
+- Heading levels outside 1 through 6 are clamped, not rejected, because XHTML
+  has no other heading elements. A stray edit cannot fail a conversion or
+  emit an element that does not exist.
+- A document with no blocks is refused rather than written as an empty but
+  structurally valid EPUB.
+- `New` copies its `Options`; mutating the caller's copy afterwards does not
+  affect the converter.
+
+`api_test.go` pins each of these.
+
+What is explicitly **not** covered: the exact structure any given PDF
+converts to. Layout reconstruction is heuristic, and heuristics improve.
+Block counts, heading levels, and chapter boundaries may change in any
+release. Pin thresholds through `Heuristics` if you need stability there, and
+watch `testdata/corpus_manifest.json` for how a change moves 34 real
+documents.
 
 ## Guarantees
 

@@ -2,6 +2,7 @@ package decant
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/sroberts/decant/internal/epub"
@@ -24,47 +25,119 @@ func (c *Converter) buildChapters(doc *Document, imgs *imageSet, rep *Report) ([
 	// landed in, which the hierarchical TOC is built from afterward.
 	var headingRefs []headingRef
 
+	// Splitting has to finish before any body is rendered, because a
+	// cross-reference needs the file its target landed in and that target may
+	// sit in a chapter not yet built. Spec 4.9.
+	type chapterPart struct {
+		id, title, href string
+		first           bool
+		blocks          []Block
+	}
+	var parts []chapterPart
 	for gi, g := range groups {
 		title := chapterTitle(g, gi, doc)
 		baseID := fmt.Sprintf("ch%03d", gi+1)
-
-		parts := c.splitBySize(g, rep, baseID)
-		for pi, part := range parts {
+		for pi, part := range c.splitBySize(g, rep, baseID) {
 			id := baseID
 			if pi > 0 {
 				id = fmt.Sprintf("%s-%d", baseID, pi+1)
 			}
-			href := "text/" + id + ".xhtml"
-
-			chapters = append(chapters, epub.Chapter{
-				ID:    id,
-				Title: title,
-				Body:  c.renderBlocks(part, imgs, rep),
+			parts = append(parts, chapterPart{
+				id: id, title: title, href: "text/" + id + ".xhtml",
+				first: pi == 0, blocks: part,
 			})
+		}
+	}
 
-			for _, b := range part {
-				if b.Kind != KindHeading || strings.TrimSpace(b.Text) == "" {
-					continue
-				}
-				headingRefs = append(headingRefs, headingRef{
-					title: layout.StripSuperscriptMarks(b.Text),
-					level: b.Level,
-					href:  href + "#" + b.ID,
-				})
-			}
-			// A chapter that contributes no heading still needs an entry, or
-			// it would be unreachable from the table of contents.
-			if pi == 0 && !partHasHeading(part) {
-				headingRefs = append(headingRefs, headingRef{
-					title: title,
-					level: 1,
-					href:  href,
-				})
+	// Which file each block landed in, and which blocks a cross-reference
+	// actually points at. Only the latter get an id attribute: anchoring
+	// every paragraph would inflate each file against the crosspoint chunk
+	// budget for no benefit.
+	fileOf := map[string]string{}
+	for _, p := range parts {
+		for _, b := range p.blocks {
+			fileOf[b.ID] = p.id + ".xhtml"
+		}
+	}
+	targeted := map[string]bool{}
+	for _, b := range doc.Blocks {
+		for _, ref := range b.Links {
+			if ref.TargetID != "" {
+				targeted[ref.TargetID] = true
 			}
 		}
 	}
 
+	for _, p := range parts {
+		lc := &linkContext{fileOf: fileOf, targeted: targeted, self: p.id + ".xhtml"}
+
+		chapters = append(chapters, epub.Chapter{
+			ID:    p.id,
+			Title: p.title,
+			Body:  c.renderBlocks(p.blocks, imgs, rep, lc),
+		})
+
+		for _, b := range p.blocks {
+			if b.Kind != KindHeading || strings.TrimSpace(b.Text) == "" {
+				continue
+			}
+			headingRefs = append(headingRefs, headingRef{
+				title: layout.StripSuperscriptMarks(b.Text),
+				level: b.Level,
+				href:  p.href + "#" + b.ID,
+			})
+		}
+		// A chapter that contributes no heading still needs an entry, or it
+		// would be unreachable from the table of contents.
+		if p.first && !partHasHeading(p.blocks) {
+			headingRefs = append(headingRefs, headingRef{
+				title: p.title,
+				level: 1,
+				href:  p.href,
+			})
+		}
+	}
+
 	return chapters, buildNav(headingRefs)
+}
+
+// idAttr returns an id attribute for a block that something links to, and
+// nothing otherwise.
+func idAttr(lc *linkContext, id string) string {
+	if !lc.anchored(id) {
+		return ""
+	}
+	return fmt.Sprintf(` id="%s"`, epub.EscapeXML(id))
+}
+
+// linkContext is what the renderer needs to emit cross-references: where each
+// block landed, which blocks are pointed at, and which file is being written.
+type linkContext struct {
+	fileOf   map[string]string
+	targeted map[string]bool
+	self     string
+}
+
+// href returns the link target for a block ID, relative to the file being
+// rendered. A target in the same file is a bare fragment, which keeps the
+// common case short.
+func (lc *linkContext) href(id string) (string, bool) {
+	if lc == nil || id == "" {
+		return "", false
+	}
+	file, ok := lc.fileOf[id]
+	if !ok {
+		return "", false
+	}
+	if file == lc.self {
+		return "#" + id, true
+	}
+	return file + "#" + id, true
+}
+
+// anchored reports whether a block needs an id attribute emitted.
+func (lc *linkContext) anchored(id string) bool {
+	return lc != nil && lc.targeted[id]
 }
 
 // headingRef is one heading with the file and anchor it serializes to.
@@ -264,7 +337,7 @@ func renderedSize(b Block) int {
 //
 // imgs resolves a figure's ImageID to its dimensions and href; a figure whose
 // image is missing renders as its caption alone rather than a broken link.
-func (c *Converter) renderBlocks(blocks []Block, imgs *imageSet, rep *Report) string {
+func (c *Converter) renderBlocks(blocks []Block, imgs *imageSet, rep *Report, lc *linkContext) string {
 	var sb strings.Builder
 	sb.Grow(len(blocks) * 96)
 
@@ -273,7 +346,7 @@ func (c *Converter) renderBlocks(blocks []Block, imgs *imageSet, rep *Report) st
 	first := true
 
 	for _, b := range blocks {
-		text := renderInline(b)
+		text := renderInline(b, lc)
 		if strings.TrimSpace(text) == "" && b.Kind != KindFigure && b.Kind != KindTable {
 			continue
 		}
@@ -286,7 +359,7 @@ func (c *Converter) renderBlocks(blocks []Block, imgs *imageSet, rep *Report) st
 				// The image was dropped after the block was made. Keep the
 				// caption, which is real content, and drop the frame.
 				if text != "" {
-					fmt.Fprintf(&sb, "<p class=\"caption\">%s</p>\n", text)
+					fmt.Fprintf(&sb, "<p class=\"caption\"%s>%s</p>\n", idAttr(lc, b.ID), text)
 					first = true
 				}
 				continue
@@ -298,8 +371,8 @@ func (c *Converter) renderBlocks(blocks []Block, imgs *imageSet, rep *Report) st
 			if b.InlineImage {
 				// Spec 4.7 flows a narrow image inside a paragraph rather
 				// than breaking the text around it.
-				fmt.Fprintf(&sb, "<p><img src=\"../%s\" alt=\"%s\"/></p>\n",
-					epub.EscapeXML(img.Href()), epub.EscapeXML(alt))
+				fmt.Fprintf(&sb, "<p%s><img src=\"../%s\" alt=\"%s\"/></p>\n",
+					idAttr(lc, b.ID), epub.EscapeXML(img.Href()), epub.EscapeXML(alt))
 			} else if text != "" {
 				fmt.Fprintf(&sb,
 					"<figure id=\"%s\">\n  <img src=\"../%s\" alt=\"%s\"/>\n  <figcaption>%s</figcaption>\n</figure>\n",
@@ -328,15 +401,15 @@ func (c *Converter) renderBlocks(blocks []Block, imgs *imageSet, rep *Report) st
 		case KindCode:
 			// Spec 4.6 preserves leading whitespace in code, which the
 			// stylesheet's pre-wrap honors.
-			fmt.Fprintf(&sb, "<pre><code>%s</code></pre>\n", text)
+			fmt.Fprintf(&sb, "<pre%s><code>%s</code></pre>\n", idAttr(lc, b.ID), text)
 			first = true
 
 		case KindQuote:
-			fmt.Fprintf(&sb, "<blockquote><p>%s</p></blockquote>\n", text)
+			fmt.Fprintf(&sb, "<blockquote%s><p>%s</p></blockquote>\n", idAttr(lc, b.ID), text)
 			first = true
 
 		case KindList:
-			renderList(&sb, b)
+			renderList(&sb, b, idAttr(lc, b.ID))
 			first = true
 
 		case KindTable:
@@ -352,20 +425,20 @@ func (c *Converter) renderBlocks(blocks []Block, imgs *imageSet, rep *Report) st
 			first = true
 
 		case KindCaption:
-			fmt.Fprintf(&sb, "<p class=\"caption\">%s</p>\n", text)
+			fmt.Fprintf(&sb, "<p class=\"caption\"%s>%s</p>\n", idAttr(lc, b.ID), text)
 			first = true
 
 		default:
-			// Paragraph. Anchor IDs are emitted only on headings for now;
-			// paragraph anchors arrive with internal cross-reference
-			// rewriting, and emitting them universally would inflate every
-			// file against the crosspoint chunk budget.
+			// Paragraph. An anchor is emitted only when a cross-reference
+			// actually points here: anchoring every paragraph would inflate
+			// every file against the crosspoint chunk budget for no benefit.
+			// Spec 4.9.
+			class := ""
 			if first {
-				fmt.Fprintf(&sb, "<p class=\"first\">%s</p>\n", text)
+				class = ` class="first"`
 				first = false
-			} else {
-				fmt.Fprintf(&sb, "<p>%s</p>\n", text)
 			}
+			fmt.Fprintf(&sb, "<p%s%s>%s</p>\n", class, idAttr(lc, b.ID), text)
 		}
 	}
 	return sb.String()
@@ -377,8 +450,73 @@ func (c *Converter) renderBlocks(blocks []Block, imgs *imageSet, rep *Report) st
 // whole string first would turn the angle brackets of <sup> into entities.
 // A superscript with a matching footnote becomes a noteref anchor, which is
 // what makes a conforming reader show the note as a popup.
-func renderInline(b Block) string {
-	raw := b.Text
+func renderInline(b Block, lc *linkContext) string {
+	if spans := resolvableRefs(b, lc); len(spans) > 0 {
+		return renderWithCrossRefs(b, lc, spans)
+	}
+	return renderRuns(b, b.Text, true)
+}
+
+// resolvableRefs returns the block's cross-references that have a target in
+// the output, ordered and clipped to the text.
+func resolvableRefs(b Block, lc *linkContext) []CrossRef {
+	if lc == nil || len(b.Links) == 0 {
+		return nil
+	}
+	var out []CrossRef
+	for _, ref := range b.Links {
+		if ref.TargetID == "" {
+			continue
+		}
+		if _, ok := lc.href(ref.TargetID); !ok {
+			continue
+		}
+		if ref.Start < 0 || ref.End > len(b.Text) || ref.Start >= ref.End {
+			continue
+		}
+		out = append(out, ref)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Start < out[j].Start })
+
+	// Overlaps were resolved during mapping, but a caller may have edited the
+	// block tree between Analyze and Write. Nested anchors are invalid XHTML,
+	// so drop rather than trust.
+	kept := out[:0]
+	prevEnd := 0
+	for _, ref := range out {
+		if ref.Start < prevEnd {
+			continue
+		}
+		kept = append(kept, ref)
+		prevEnd = ref.End
+	}
+	return kept
+}
+
+// renderWithCrossRefs wraps each linked range in an anchor, rendering the
+// segments between them normally.
+//
+// Superscript noterefs inside a linked range emit as plain sup rather than as
+// their own anchor, because an anchor inside an anchor is invalid XHTML. A
+// footnote marker that falls inside a cross-reference is rare and losing its
+// link is the lesser damage.
+func renderWithCrossRefs(b Block, lc *linkContext, spans []CrossRef) string {
+	var sb strings.Builder
+	pos := 0
+	for _, ref := range spans {
+		sb.WriteString(renderRuns(b, b.Text[pos:ref.Start], true))
+		href, _ := lc.href(ref.TargetID)
+		fmt.Fprintf(&sb, `<a href="%s">%s</a>`,
+			epub.EscapeXML(href), renderRuns(b, b.Text[ref.Start:ref.End], false))
+		pos = ref.End
+	}
+	sb.WriteString(renderRuns(b, b.Text[pos:], true))
+	return sb.String()
+}
+
+// renderRuns escapes text and turns superscript runs into sup elements,
+// linking them to their footnote when noteRefs is set.
+func renderRuns(b Block, raw string, noteRefs bool) string {
 	if !strings.Contains(raw, layout.SuperscriptOpen) {
 		return epub.EscapeXML(raw)
 	}
@@ -404,7 +542,7 @@ func renderInline(b Block) string {
 		rest = rest[j+len(layout.SuperscriptClose):]
 
 		escaped := epub.EscapeXML(label)
-		if id, ok := b.NoteRefs[strings.TrimSpace(label)]; ok {
+		if id, ok := b.NoteRefs[strings.TrimSpace(label)]; ok && noteRefs {
 			fmt.Fprintf(&sb,
 				`<a epub:type="noteref" href="#%s"><sup>%s</sup></a>`,
 				epub.EscapeXML(id), escaped)
@@ -514,7 +652,7 @@ func renderTableText(sb *strings.Builder, b Block) {
 //
 // Spec section 4.6 infers the start attribute from the first marker, so a
 // list resuming at 7 after an interruption keeps its numbering.
-func renderList(sb *strings.Builder, b Block) {
+func renderList(sb *strings.Builder, b Block, id string) {
 	items := b.ListItems
 	if len(items) == 0 {
 		items = strings.Split(b.Text, "\n")
@@ -522,12 +660,12 @@ func renderList(sb *strings.Builder, b Block) {
 
 	if b.ListOrdered {
 		if b.ListStart > 1 {
-			fmt.Fprintf(sb, "<ol start=\"%d\">\n", b.ListStart)
+			fmt.Fprintf(sb, "<ol%s start=\"%d\">\n", id, b.ListStart)
 		} else {
-			sb.WriteString("<ol>\n")
+			fmt.Fprintf(sb, "<ol%s>\n", id)
 		}
 	} else {
-		sb.WriteString("<ul>\n")
+		fmt.Fprintf(sb, "<ul%s>\n", id)
 	}
 	for _, it := range items {
 		it = strings.TrimSpace(it)

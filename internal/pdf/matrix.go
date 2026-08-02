@@ -61,6 +61,13 @@ type Rect struct {
 	MinX, MinY, MaxX, MaxY float64
 }
 
+// Intersects reports whether two rectangles share any area. Touching edges
+// do not count, so a rectangle abutting another is not inside it.
+func (r Rect) Intersects(o Rect) bool {
+	return r.MinX < o.MaxX && o.MinX < r.MaxX &&
+		r.MinY < o.MaxY && o.MinY < r.MaxY
+}
+
 // Width returns the horizontal extent.
 func (r Rect) Width() float64 { return r.MaxX - r.MinX }
 

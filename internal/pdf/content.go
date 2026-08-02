@@ -19,20 +19,23 @@ const maxGlyphsPerPage = 2_000_000
 // gstate is the subset of PDF graphics and text state that affects glyph
 // position and appearance.
 type gstate struct {
-	ctm      Matrix
-	font     *Font
-	fontID   FontID
-	fontSize float64
-	charSp   float64 // Tc
-	wordSp   float64 // Tw
-	hscale   float64 // Tz / 100
-	leading  float64 // TL
-	rise     float64 // Ts
-	render   uint8   // Tr
+	ctm       Matrix
+	font      *Font
+	fontID    FontID
+	fontSize  float64
+	charSp    float64 // Tc
+	wordSp    float64 // Tw
+	hscale    float64 // Tz / 100
+	leading   float64 // TL
+	rise      float64 // Ts
+	render    uint8   // Tr
+	lineWidth float64 // w
 }
 
 func newGState(ctm Matrix) gstate {
-	return gstate{ctm: ctm, hscale: 1, fontID: NoFont}
+	// A line width of 1 is the PDF default; 0 means the thinnest line the
+	// device can render, which for rule detection behaves the same way.
+	return gstate{ctm: ctm, hscale: 1, fontID: NoFont, lineWidth: 1}
 }
 
 // interpreter walks one page's content streams and emits glyphs.
@@ -51,12 +54,19 @@ type interpreter struct {
 	images []ImageDraw
 
 	// path accumulates the extent of the path under construction, reset at
-	// each painting operator.
+	// each painting operator. subpaths holds each segment's own extent, so a
+	// path built from several lines contributes several candidate rules
+	// rather than one box spanning them all.
 	path      Rect
 	pathEmpty bool
+	subpaths  []Rect
+	// cur tracks the extent of the subpath being built.
+	cur      Rect
+	curEmpty bool
 
 	vectorPaints int
 	vectorBounds Rect
+	rules        []Rule
 
 	// fontTable is the per-page list FontID indexes into.
 	fontTable []*Font
@@ -85,10 +95,43 @@ type PageContent struct {
 	// decant does not render vector artwork; spec section 1 puts conversion to
 	// SVG out of scope for v1 and section 13 keeps rasterization open. These
 	// exist so the loss is reported rather than silent, which spec principle 3
-	// requires. Only the aggregate is kept: table detection in M5 needs the
-	// individual segments and is where that geometry belongs.
+	// requires.
 	VectorPaints int
 	VectorBounds Rect
+
+	// Rules are the axis-aligned thin painted segments on the page, which is
+	// what table ruling lines look like in a content stream. Spec section 4.8
+	// keys grid detection on them.
+	Rules []Rule
+}
+
+// Rule is one axis-aligned line segment painted on the page.
+//
+// Spec section 4.8 detects tables from `re` and `l` operators with a stroke
+// width under 2 pt. Both shapes reduce to the same thing once the CTM has been
+// applied: a thin segment with a length, a position, and an orientation. A
+// filled rectangle a fraction of a point tall is a rule drawn the other common
+// way, so fills are recorded on the same footing as strokes.
+type Rule struct {
+	// Bounds is the segment's extent in page space.
+	Bounds Rect
+	// Horizontal reports the orientation. A segment thinner than it is long
+	// runs along its longer axis.
+	Horizontal bool
+	// Thickness is the segment's smaller dimension in points, which is the
+	// stroke width for a stroked line and the height or width for a filled
+	// rectangle.
+	Thickness float64
+	// Filled distinguishes a filled rectangle from a stroked path.
+	Filled bool
+}
+
+// Length returns the segment's extent along its own axis.
+func (r Rule) Length() float64 {
+	if r.Horizontal {
+		return r.Bounds.Width()
+	}
+	return r.Bounds.Height()
 }
 
 // ImageDraw is one image painted on a page.
@@ -146,6 +189,7 @@ func Interpret(xref *model.XRefTable, fc *FontCache, content []byte, res types.D
 		gs:        newGState(baseCTM),
 		fontIndex: map[FontRef]FontID{},
 		pathEmpty: true,
+		curEmpty:  true,
 	}
 	ip.run(content, res, 0)
 	return &PageContent{
@@ -155,6 +199,7 @@ func Interpret(xref *model.XRefTable, fc *FontCache, content []byte, res types.D
 		Truncated:    ip.truncated,
 		VectorPaints: ip.vectorPaints,
 		VectorBounds: ip.vectorBounds,
+		Rules:        ip.rules,
 	}
 }
 
@@ -213,6 +258,10 @@ func (ip *interpreter) exec(op string, args []object, res types.Dict, depth int,
 	case "gs":
 		if len(args) >= 1 {
 			ip.applyExtGState(args[len(args)-1].name(), res)
+		}
+	case "w":
+		if len(args) >= 1 {
+			ip.gs.lineWidth = args[len(args)-1].float()
 		}
 
 	// --- text objects ---
@@ -312,7 +361,13 @@ func (ip *interpreter) exec(op string, args []object, res types.Dict, depth int,
 	// Coordinates are collected only to bound the artwork for the dropped-
 	// vector diagnostic. A curve's control points bound its curve, so taking
 	// them verbatim is a safe over-estimate.
-	case "m", "l":
+	case "m":
+		if len(args) >= 2 {
+			// A move ends the current subpath and starts a new one.
+			ip.endSubpath()
+			ip.addPathPoint(args[len(args)-2].float(), args[len(args)-1].float())
+		}
+	case "l":
 		if len(args) >= 2 {
 			ip.addPathPoint(args[len(args)-2].float(), args[len(args)-1].float())
 		}
@@ -330,10 +385,15 @@ func (ip *interpreter) exec(op string, args []object, res types.Dict, depth int,
 		}
 	case "re":
 		if len(args) >= 4 {
+			// A rectangle is a complete subpath of its own.
+			ip.endSubpath()
 			x, y := args[0].float(), args[1].float()
 			w, h := args[2].float(), args[3].float()
 			ip.addPathPoint(x, y)
+			ip.addPathPoint(x+w, y)
 			ip.addPathPoint(x+w, y+h)
+			ip.addPathPoint(x, y+h)
+			ip.endSubpath()
 		}
 	case "h":
 		// Close the subpath; adds no new geometry.
@@ -342,8 +402,13 @@ func (ip *interpreter) exec(op string, args []object, res types.Dict, depth int,
 	//
 	// n paints nothing. It is the second half of the "W n" clipping idiom, so
 	// counting it would report every clip region as dropped artwork.
-	case "S", "s", "f", "F", "f*", "B", "B*", "b", "b*":
-		ip.paintPath()
+	case "S", "s":
+		ip.paintPath(false)
+	case "f", "F", "f*", "B", "B*", "b", "b*":
+		// The B family both fills and strokes. Recording them as filled is
+		// the conservative reading: a filled rule's thickness is its own
+		// geometry rather than the pen width.
+		ip.paintPath(true)
 	case "n":
 		ip.resetPath()
 
@@ -555,31 +620,126 @@ func (ip *interpreter) showText(s []byte) {
 	}
 }
 
-// addPathPoint folds a construction coordinate into the current path's
-// extent, transformed into page space.
+// maxSubpathsPerPath bounds how many subpaths one path contributes, so a
+// pathological content stream cannot exhaust memory before the paint operator
+// arrives.
+const maxSubpathsPerPath = 4096
+
+// addPathPoint folds a construction coordinate into the current subpath and
+// the whole path's extent, transformed into page space.
 func (ip *interpreter) addPathPoint(x, y float64) {
 	px, py := ip.gs.ctm.Apply(x, y)
 	box := Rect{MinX: px, MinY: py, MaxX: px, MaxY: py}
+
 	if ip.pathEmpty {
-		ip.path = box
-		ip.pathEmpty = false
-		return
+		ip.path, ip.pathEmpty = box, false
+	} else {
+		ip.path = ip.path.Union(box)
 	}
-	ip.path = ip.path.Union(box)
+	if ip.curEmpty {
+		ip.cur, ip.curEmpty = box, false
+	} else {
+		ip.cur = ip.cur.Union(box)
+	}
 }
 
-// paintPath records a painted path and starts a new one.
-func (ip *interpreter) paintPath() {
+// endSubpath closes the subpath under construction.
+func (ip *interpreter) endSubpath() {
+	if !ip.curEmpty && len(ip.subpaths) < maxSubpathsPerPath {
+		ip.subpaths = append(ip.subpaths, ip.cur)
+	}
+	ip.cur, ip.curEmpty = Rect{}, true
+}
+
+// maxRulesPerPage bounds rule recording.
+const maxRulesPerPage = 16384
+
+// paintPath records a painted path: its contribution to the dropped-artwork
+// counters, and any subpath thin enough to be a ruling line.
+func (ip *interpreter) paintPath(filled bool) {
+	ip.endSubpath()
+
 	if !ip.pathEmpty {
 		ip.vectorPaints++
 		ip.vectorBounds = ip.vectorBounds.Union(ip.path)
 	}
+
+	// The stroke width in page space. A stroked line's visible thickness is
+	// the pen width scaled by the CTM, not the raw w operand.
+	sx, sy := ip.gs.ctm.ScaleXY()
+	penScale := (sx + sy) / 2
+	pen := ip.gs.lineWidth * penScale
+	if pen <= 0 {
+		// Width 0 means the thinnest renderable line.
+		pen = 0.1
+	}
+
+	for _, sp := range ip.subpaths {
+		if len(ip.rules) >= maxRulesPerPage {
+			break
+		}
+		if r, ok := ruleFromSubpath(sp, pen, filled); ok {
+			ip.rules = append(ip.rules, r)
+		}
+	}
 	ip.resetPath()
 }
 
+// ruleFromSubpath reduces a subpath to a rule when it is axis-aligned and
+// thin, which is what a table's ruling lines look like.
+//
+// A stroked segment has zero extent across its own axis, so its thickness is
+// the pen width; a filled rectangle carries its thickness in its geometry.
+// Anything appreciably thick in both directions is a box or a shape, not a
+// rule, and is left alone.
+func ruleFromSubpath(sp Rect, pen float64, filled bool) (Rule, bool) {
+	w, h := sp.Width(), sp.Height()
+
+	var horizontal bool
+	var thickness, length float64
+	switch {
+	case w >= h:
+		horizontal, length = true, w
+		thickness = h
+	default:
+		horizontal, length = false, h
+		thickness = w
+	}
+	if !filled {
+		// A stroke adds the pen width across the segment.
+		thickness += pen
+	}
+
+	// Too short to bound a cell, or too thick to be a line.
+	if length < minRuleLength || thickness > maxRuleThickness {
+		return Rule{}, false
+	}
+	// A filled square is a glyph-sized mark, not a rule.
+	if length <= thickness*2 {
+		return Rule{}, false
+	}
+	return Rule{
+		Bounds:     sp,
+		Horizontal: horizontal,
+		Thickness:  thickness,
+		Filled:     filled,
+	}, true
+}
+
+const (
+	// minRuleLength is the shortest segment that can bound a table cell.
+	// Shorter marks are dashes, tick marks, and glyph decoration.
+	minRuleLength = 4.0
+	// maxRuleThickness is the stroke width above which a painted segment is a
+	// bar or a rectangle rather than a ruling line. Spec section 4.8 sets it
+	// at 2 pt.
+	maxRuleThickness = 2.0
+)
+
 func (ip *interpreter) resetPath() {
-	ip.path = Rect{}
-	ip.pathEmpty = true
+	ip.path, ip.pathEmpty = Rect{}, true
+	ip.cur, ip.curEmpty = Rect{}, true
+	ip.subpaths = ip.subpaths[:0]
 }
 
 // maxImagesPerPage bounds image recording so a hostile content stream cannot

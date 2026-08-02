@@ -8,7 +8,7 @@ decant converts fixed-layout, text-layer PDFs into semantic, reflowable EPUB 3. 
 
 `spec.md` is the authoritative design document — read the relevant section before changing a stage, and update §13 (open/closed decisions, with dates) when a design decision changes. Code comments reference spec sections by number; keep those references accurate when you move logic.
 
-Currently at **M4** complete: everything but table detection. M5 (tables, plus finishing the report and `probe`) is next.
+Currently at **M5** complete: tables, profiles, report, and `probe`. M6 (API stabilization and TUI integration) is next.
 
 ## Commands
 
@@ -117,7 +117,7 @@ Fuzzing is not optional — malformed PDFs are a hostile input class and the par
 
 ## Milestones
 
-M1 interpreter + paragraphs (**done**) → M2 segmentation, columns, headings, TOC (**done**) → M3 images (**done**) → M4 furniture, dehyphenation, footnotes, lists (**done**) → M5 tables, profiles, report, `probe` → M6 API stabilization + TUI integration.
+M1 interpreter + paragraphs (**done**) → M2 segmentation, columns, headings, TOC (**done**) → M3 images (**done**) → M4 furniture, dehyphenation, footnotes, lists (**done**) → M5 tables, profiles, report, `probe` (**done**) → M6 API stabilization + TUI integration.
 
 Ship M1–M3 before optimizing: tuning layout thresholds against three test files produces overfitted garbage. Tag `v0.x` through M5; the API is unstable until `v1.0.0`.
 

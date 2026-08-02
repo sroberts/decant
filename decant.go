@@ -48,6 +48,7 @@ func New(opts Options) (*Converter, error) {
 	cfg.Columns = opts.Columns
 	cfg.KeepSmallImages = opts.KeepSmallImages
 	cfg.KeepHeaders = opts.KeepHeaders
+	cfg.TableMode = layout.TableMode(opts.Tables)
 	cfg.ListMarker = func(s string) bool {
 		_, ok := parseListMarker(s)
 		return ok
@@ -98,6 +99,15 @@ func layoutConfig(h Heuristics) layout.Config {
 		CaptionGapLines:       h.CaptionGapLines,
 		CaptionSizeRatio:      h.CaptionSizeRatio,
 		CaptionOverlapRatio:   h.CaptionOverlapRatio,
+
+		RuleMaxThickness:      h.RuleMaxThickness,
+		RuleClusterTolerance:  h.RuleClusterTolerance,
+		RuleRowCoverRatio:     h.RuleRowCoverRatio,
+		TableRegionGap:        h.TableRegionGap,
+		TableColumnTolerance:  h.TableColumnTolerance,
+		TableMinSharedColumns: h.TableMinSharedColumns,
+		TableMinRows:          h.TableMinRows,
+		TableMinFilledRatio:   h.TableMinFilledRatio,
 	}
 }
 
@@ -339,6 +349,22 @@ func (c *Converter) analyzePage(
 	}
 	m.Images = len(figs)
 
+	// Tables are detected before paragraphs are emitted, so the lines they
+	// consume are not also emitted as prose.
+	tables := layout.DetectTables(cfg, pl, pc.Rules)
+	tableLines := map[int]bool{}
+	for _, t := range tables {
+		for i := range t.LineIndices {
+			tableLines[i] = true
+		}
+	}
+	if len(tables) > 0 {
+		m.Tables = len(tables)
+		for _, t := range tables {
+			rep.Tables[string(t.Confidence)]++
+		}
+	}
+
 	// Emit paragraphs in reading order, then insert each figure at the point
 	// its position implies.
 	//
@@ -357,6 +383,9 @@ func (c *Converter) analyzePage(
 
 	for bi, b := range pl.Blocks {
 		if captionBlocks[bi] {
+			continue
+		}
+		if len(tableLines) > 0 && blockInTable(pl, b, tableLines) {
 			continue
 		}
 		for _, p := range layout.Reconstruct(cfg, b) {
@@ -423,6 +452,37 @@ func (c *Converter) analyzePage(
 		}
 	}
 
+	for _, t := range tables {
+		rows := make([][]TableCell, 0, len(t.Rows))
+		for _, r := range t.Rows {
+			row := make([]TableCell, 0, len(r))
+			for _, c := range r {
+				row = append(row, TableCell{Text: c.Text, ColSpan: c.ColSpan})
+			}
+			rows = append(rows, row)
+		}
+		tb := item{
+			srcBlock: -1,
+			block: Block{
+				Kind:            KindTable,
+				Text:            tableFlatText(rows),
+				TableRows:       rows,
+				TableConfidence: string(t.Confidence),
+				Page:            idx,
+				Bounds:          toRect(t.Bounds),
+			},
+			feat: blockFeatures{isTable: true},
+		}
+		srcs := make([]int, len(items))
+		for i, it := range items {
+			srcs[i] = it.srcBlock
+		}
+		at := rectInsertIndex(srcs, pl.Blocks, t.Bounds)
+		items = append(items, item{})
+		copy(items[at+1:], items[at:])
+		items[at] = tb
+	}
+
 	for _, f := range figs {
 		id, ok := imageIDs[f.Draw.Order]
 		if !ok {
@@ -445,7 +505,7 @@ func (c *Converter) analyzePage(
 		for i, it := range items {
 			srcs[i] = it.srcBlock
 		}
-		at := figureInsertIndex(srcs, pl.Blocks, f)
+		at := rectInsertIndex(srcs, pl.Blocks, f.Bounds)
 		items = append(items, item{})
 		copy(items[at+1:], items[at:])
 		items[at] = fb
@@ -532,28 +592,51 @@ const maxReportedHyphenDecisions = 40
 // across the page width: a block in a later column always follows, and a block
 // in the same column follows when it starts lower down. Anything else keeps
 // its place, so paragraph order is untouched.
-func figureInsertIndex(srcBlocks []int, blocks []layout.Block, f layout.Figure) int {
+func rectInsertIndex(srcBlocks []int, blocks []layout.Block, r pdf.Rect) int {
 	for i, bi := range srcBlocks {
 		if bi < 0 || bi >= len(blocks) {
 			continue
 		}
-		b := blocks[bi]
-		switch {
-		case b.Column == f.Column:
-			if b.Bounds.MinY > f.Bounds.MinY {
-				return i
-			}
-		case f.Column == -1 || b.Column == -1:
-			// One of the two spans the gutters, so they share a single
-			// vertical sequence.
-			if b.Bounds.MinY > f.Bounds.MinY {
-				return i
-			}
-		case b.Column > f.Column:
+		if blocks[bi].Bounds.MinY > r.MinY {
 			return i
 		}
 	}
 	return len(srcBlocks)
+}
+
+// blockInTable reports whether every line of a block was claimed by a table.
+func blockInTable(pl *layout.PageLayout, b layout.Block, taken map[int]bool) bool {
+	matched, total := 0, 0
+	for _, bl := range b.Lines {
+		for i, l := range pl.Lines {
+			if l.Baseline == bl.Baseline && l.Bounds.MinX == bl.Bounds.MinX {
+				total++
+				if taken[i] {
+					matched++
+				}
+				break
+			}
+		}
+	}
+	return total > 0 && matched == total
+}
+
+// tableFlatText renders a table's cells as plain text, which the block model
+// carries for fingerprints, anchors, and the text-mode fallback.
+func tableFlatText(rows [][]TableCell) string {
+	var sb strings.Builder
+	for i, row := range rows {
+		if i > 0 {
+			sb.WriteByte('\n')
+		}
+		for j, c := range row {
+			if j > 0 {
+				sb.WriteString("\t")
+			}
+			sb.WriteString(c.Text)
+		}
+	}
+	return sb.String()
 }
 
 // figureDraws extracts the image placements from a figure list.

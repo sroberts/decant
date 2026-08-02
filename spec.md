@@ -204,6 +204,15 @@ Two detection signals, both required for `html` output at high confidence:
 
 Cell text assembles from glyphs bounded by adjacent rulings, or by inferred column boundaries when rulings are absent. Handle `colspan` where a cell's bounding box spans multiple detected boundaries. `--table-mode=auto` emits `<table>` at high confidence, rasterizes the region to PNG at medium confidence, and falls back to space-preserved `<pre>` at low confidence. Constrained profiles default to `text`.
 
+**Implementation notes (M5).** The two signals above accept far too much on real documents, and three guards were added to narrow them. Each is tunable in `Heuristics`.
+
+- `TableMinFilledRatio` (0.5) applies twice: to the fraction of cells carrying any text, and to the fraction of filled cells carrying more than a single character. The first rejects layout frames; the second rejects a plotted graph's axes and tick labels, and diagrams drawn from repeated marks, both of which form a fully aligned grid whose cells hold one glyph each.
+- A candidate from the alignment signal is rejected when its rows straddle more than one of the page's detected columns. Section 4.3 owns that geometry: on a two-column page every left-column line shares a baseline with a right-column line, so the rows are perfectly aligned and every boundary is shared. Nothing in the text distinguishes that from a two-column table, but the page layout does, and treating it as a table flattens the reading order into rows read across instead of down.
+
+Medium confidence cannot rasterize while section 13.1 stays open, so it degrades to `text` and records a warning rather than silently substituting.
+
+Residual over-firing is real and documented rather than tuned away: on the corpus's LaTeX textbook, detection reports eight medium-confidence tables that are mathematical displays. Section 11 warns against tuning against a handful of files, and this corpus contains only one document with a genuine ruled table.
+
 ### 4.9 Assembly and serialization
 
 Chapter files split at `--split-at` boundaries and again at `--max-chunk-bytes`, always at a paragraph boundary, with `-2`, `-3` suffixes. Internal cross-references (PDF `/Link` annotations targeting page destinations) rewrite to `href` fragments against generated anchor IDs. Anchor IDs derive from a content hash, not a counter, so they stay stable across runs.

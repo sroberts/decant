@@ -12,6 +12,31 @@ import (
 )
 
 // writeFixture writes a small valid PDF into a temp dir and returns its path.
+// writeTableFixture writes a PDF carrying a ruled table, for the flags whose
+// behaviour only shows up when a table is present.
+func writeTableFixture(t *testing.T) string {
+	t.Helper()
+	body := testpdf.TextPage("F1", 11, 72, 720, 14, []string{
+		"An introductory paragraph sitting above the table, long enough that",
+		"the body font is identified from prose rather than from cell text.",
+	})
+	rows := [][]testpdf.TableCell{
+		{{Text: "Region"}, {Text: "Revenue"}, {Text: "Growth"}},
+		{{Text: "Northeast"}, {Text: "412000"}, {Text: "12 pct"}},
+		{{Text: "Midwest"}, {Text: "298000"}, {Text: "4 pct"}},
+		{{Text: "Pacific"}, {Text: "530000"}, {Text: "19 pct"}},
+	}
+	data := testpdf.New().
+		AddPage(612, 792, body+testpdf.RuledTable("F1", 11, 72, 660, 90, 20, rows)).
+		Build()
+
+	path := filepath.Join(t.TempDir(), "table.pdf")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("writing fixture: %v", err)
+	}
+	return path
+}
+
 func writeFixture(t *testing.T) string {
 	t.Helper()
 	content := testpdf.TextPage("F1", 12, 72, 720, 15, []string{
@@ -278,15 +303,20 @@ func TestSourceDateEpochIsHonored(t *testing.T) {
 }
 
 func TestUnimplementedFlagsWarn(t *testing.T) {
-	in := writeFixture(t)
+	// --table-mode itself is implemented as of M5, so it is no longer the
+	// example here. What remains unimplemented is the "image" mode: spec
+	// section 13 keeps the vector renderer open, so a table that would be
+	// rasterized is emitted as text instead. Principle 3 requires saying so
+	// rather than silently substituting.
+	in := writeTableFixture(t)
 	out := filepath.Join(t.TempDir(), "out.epub")
 
-	code, _, stderr := runCLI("convert", in, "-o", out, "--table-mode", "html", "--quiet")
+	code, _, stderr := runCLI("convert", in, "-o", out, "--table-mode", "image")
 	if code != exitOK {
 		t.Fatalf("exit code = %d\nstderr:\n%s", code, stderr)
 	}
-	if !strings.Contains(stderr, "not implemented yet") {
-		t.Errorf("no notice for an unimplemented flag:\n%s", stderr)
+	if !strings.Contains(stderr, "table rasterization") {
+		t.Errorf("no notice that image mode degraded to text:\n%s", stderr)
 	}
 }
 

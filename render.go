@@ -39,7 +39,7 @@ func (c *Converter) buildChapters(doc *Document, imgs *imageSet, rep *Report) ([
 			chapters = append(chapters, epub.Chapter{
 				ID:    id,
 				Title: title,
-				Body:  renderBlocks(part, imgs),
+				Body:  c.renderBlocks(part, imgs, rep),
 			})
 
 			for _, b := range part {
@@ -264,7 +264,7 @@ func renderedSize(b Block) int {
 //
 // imgs resolves a figure's ImageID to its dimensions and href; a figure whose
 // image is missing renders as its caption alone rather than a broken link.
-func renderBlocks(blocks []Block, imgs *imageSet) string {
+func (c *Converter) renderBlocks(blocks []Block, imgs *imageSet, rep *Report) string {
 	var sb strings.Builder
 	sb.Grow(len(blocks) * 96)
 
@@ -274,7 +274,7 @@ func renderBlocks(blocks []Block, imgs *imageSet) string {
 
 	for _, b := range blocks {
 		text := renderInline(b)
-		if strings.TrimSpace(text) == "" && b.Kind != KindFigure {
+		if strings.TrimSpace(text) == "" && b.Kind != KindFigure && b.Kind != KindTable {
 			continue
 		}
 		// A heading boundary must not be taken from a non-heading kind.
@@ -337,6 +337,10 @@ func renderBlocks(blocks []Block, imgs *imageSet) string {
 
 		case KindList:
 			renderList(&sb, b)
+			first = true
+
+		case KindTable:
+			c.renderTable(&sb, b, rep)
 			first = true
 
 		case KindFootnote:
@@ -409,6 +413,101 @@ func renderInline(b Block) string {
 		fmt.Fprintf(&sb, "<sup>%s</sup>", escaped)
 	}
 	return sb.String()
+}
+
+// renderTable emits a table in whichever form --table-mode selects.
+//
+// Spec section 4.8 makes auto depend on confidence: a real table only when
+// both detection signals fired, a rasterized region at medium, and
+// space-preserved text at low. Rasterizing needs the vector renderer that
+// spec section 13 keeps open, so image mode degrades to text and says so
+// rather than silently emitting something the caller did not ask for.
+func (c *Converter) renderTable(sb *strings.Builder, b Block, rep *Report) {
+	mode := c.opts.Tables
+	if mode == TableAuto {
+		switch b.TableConfidence {
+		case string(layout.ConfidenceHigh):
+			mode = TableHTML
+		case string(layout.ConfidenceMedium):
+			mode = TableImage
+		default:
+			mode = TableText
+		}
+	}
+	if mode == TableImage {
+		rep.warnOnce("tables",
+			"table rasterization needs the vector renderer that spec section 13 "+
+				"keeps open, so tables that would be rasterized are emitted as "+
+				"space-preserved text instead")
+		mode = TableText
+	}
+
+	switch mode {
+	case TableDrop:
+		return
+	case TableHTML:
+		renderTableHTML(sb, b)
+	default:
+		renderTableText(sb, b)
+	}
+}
+
+func renderTableHTML(sb *strings.Builder, b Block) {
+	fmt.Fprintf(sb, "<table id=\"%s\">\n", epub.EscapeXML(b.ID))
+	for i, row := range b.TableRows {
+		sb.WriteString("  <tr>\n")
+		// The first row of a ruled table is its header often enough, and a
+		// th costs nothing when it is not.
+		tag := "td"
+		if i == 0 {
+			tag = "th"
+		}
+		for _, cell := range row {
+			span := ""
+			if cell.ColSpan > 1 {
+				span = fmt.Sprintf(" colspan=\"%d\"", cell.ColSpan)
+			}
+			fmt.Fprintf(sb, "    <%s%s>%s</%s>\n",
+				tag, span, epub.EscapeXML(cell.Text), tag)
+		}
+		sb.WriteString("  </tr>\n")
+	}
+	sb.WriteString("</table>\n")
+}
+
+// renderTableText emits the table as aligned, space-preserved text.
+//
+// Columns are padded to a common width so the shape survives in a reader that
+// cannot lay out a table, which is the point of the fallback.
+func renderTableText(sb *strings.Builder, b Block) {
+	widths := map[int]int{}
+	for _, row := range b.TableRows {
+		for j, c := range row {
+			if n := len([]rune(c.Text)); n > widths[j] {
+				widths[j] = n
+			}
+		}
+	}
+
+	var text strings.Builder
+	for i, row := range b.TableRows {
+		if i > 0 {
+			text.WriteByte('\n')
+		}
+		for j, c := range row {
+			if j > 0 {
+				text.WriteString("  ")
+			}
+			text.WriteString(c.Text)
+			if j < len(row)-1 {
+				for k := len([]rune(c.Text)); k < widths[j]; k++ {
+					text.WriteByte(' ')
+				}
+			}
+		}
+	}
+	fmt.Fprintf(sb, "<pre id=\"%s\">%s</pre>\n",
+		epub.EscapeXML(b.ID), epub.EscapeXML(text.String()))
 }
 
 // renderList emits a list block as ul or ol.

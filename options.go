@@ -247,6 +247,41 @@ type Heuristics struct {
 	// counts as a superscript. Default 0.85.
 	SuperscriptSizeRatio float64
 
+	// RuleMaxThickness is the stroke width above which a painted segment is a
+	// bar rather than a ruling line. Default 2.
+	RuleMaxThickness float64
+
+	// RuleClusterTolerance is how far apart two rules may sit and still count
+	// as the same table boundary. Default 2.
+	RuleClusterTolerance float64
+
+	// RuleRowCoverRatio is the fraction of a row's height a vertical rule
+	// must span to separate its cells. Default 0.6.
+	RuleRowCoverRatio float64
+
+	// TableRegionGap is the vertical gap between ruling lines beyond which
+	// they belong to separate tables. Default 36.
+	TableRegionGap float64
+
+	// TableColumnTolerance is how close two column starts must be to count as
+	// the same boundary. Default 2.
+	TableColumnTolerance float64
+
+	// TableMinSharedColumns is how many boundaries every row must share for
+	// the alignment signal to fire. Default 2.
+	TableMinSharedColumns int
+
+	// TableMinRows is the number of consecutive tabulated lines the alignment
+	// signal needs. Default 3.
+	TableMinRows int
+
+	// TableMinFilledRatio is the fraction of a ruled grid's cells that must
+	// carry text for it to be a table. Default 0.5.
+	//
+	// Not in the spec. Diagrams draw axis-aligned lines that form apparent
+	// grids; without this guard a mathematics textbook yields phantom tables.
+	TableMinFilledRatio float64
+
 	// VectorMinPaints is the number of painted paths a page must carry before
 	// its vector artwork is reported as dropped content. Default 24.
 	//
@@ -311,6 +346,15 @@ func DefaultHeuristics() Heuristics {
 		SuperscriptRiseEm:    0.2,
 		SuperscriptSizeRatio: 0.85,
 		VectorMinPaints:      24,
+
+		RuleMaxThickness:      2,
+		RuleClusterTolerance:  2,
+		RuleRowCoverRatio:     0.6,
+		TableRegionGap:        36,
+		TableColumnTolerance:  2,
+		TableMinSharedColumns: 2,
+		TableMinRows:          3,
+		TableMinFilledRatio:   0.5,
 	}
 }
 
@@ -432,6 +476,37 @@ func (p PageRange) String() string {
 	return strings.Join(parts, ",")
 }
 
+// TableMode selects how a detected table is emitted, per spec section 4.8.
+type TableMode string
+
+const (
+	// TableAuto picks by detection confidence: a real table when both
+	// signals fire, a rasterized region at medium confidence, and
+	// space-preserved text at low.
+	TableAuto TableMode = "auto"
+	// TableHTML always emits a table element.
+	TableHTML TableMode = "html"
+	// TableImage rasterizes the table's region.
+	//
+	// Rasterizing needs the vector renderer spec section 13 keeps open, so
+	// this currently falls back to TableText and records a diagnostic rather
+	// than silently emitting something else.
+	TableImage TableMode = "image"
+	// TableText emits space-preserved text inside a pre element.
+	TableText TableMode = "text"
+	// TableDrop discards detected tables, leaving their text as paragraphs.
+	TableDrop TableMode = "drop"
+)
+
+// Valid reports whether m is a known table mode.
+func (m TableMode) Valid() bool {
+	switch m {
+	case TableAuto, TableHTML, TableImage, TableText, TableDrop:
+		return true
+	}
+	return false
+}
+
 // ImageMode selects how images are handled.
 type ImageMode string
 
@@ -484,6 +559,10 @@ type Options struct {
 	Images ImageMode
 	// KeepSmallImages retains images the size rules in spec 4.7 would drop.
 	KeepSmallImages bool
+
+	// Tables selects how detected tables are emitted. Default TableAuto; the
+	// crosspoint and minimal profiles lower it to TableText.
+	Tables TableMode
 	// ImageMaxWidth is the longest edge in pixels; 0 disables scaling.
 	ImageMaxWidth int
 
@@ -508,6 +587,7 @@ func DefaultOptions() Options {
 		MaxChunkBytes: 262144,
 		Images:        ImagesKeep,
 		ImageMaxWidth: 1600,
+		Tables:        TableAuto,
 		Jobs:          1,
 	}
 }
@@ -542,6 +622,13 @@ func (o *Options) ApplyProfileDefaults() {
 		// into a DOM is the case it exists to serve.
 		o.MaxChunkBytes = 65536
 	}
+	// Spec section 5: the constrained profiles default to text-mode tables.
+	// A two-button device with a 480px measure cannot usefully scroll a wide
+	// table, and CrossPoint's release notes attribute crashes to complex CSS.
+	switch o.Profile {
+	case ProfileCrossPoint, ProfileMinimal:
+		o.Tables = TableText
+	}
 }
 
 // navDepth returns the TOC depth cap for the profile; 0 is unlimited.
@@ -560,6 +647,9 @@ func (o *Options) validate() error {
 	}
 	if !o.SplitAt.Valid() {
 		return fmt.Errorf("unknown split mode %q (want h1, h2, page, or none)", o.SplitAt)
+	}
+	if !o.Tables.Valid() {
+		return fmt.Errorf("unknown table mode %q (want auto, html, image, text, or drop)", o.Tables)
 	}
 	if !o.Images.Valid() {
 		return fmt.Errorf("unknown image mode %q (want keep, grayscale, or drop)", o.Images)

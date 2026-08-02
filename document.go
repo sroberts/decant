@@ -85,6 +85,21 @@ type Block struct {
 	NoteRefs map[string]string
 	// NoteLabel is a footnote block's own marker, e.g. "1" or "†".
 	NoteLabel string
+
+	// TableRows holds a table block's cells, row by row. Empty for every
+	// other kind.
+	TableRows [][]TableCell
+	// TableConfidence records which detection signals fired, which
+	// --table-mode=auto keys on.
+	TableConfidence string
+}
+
+// TableCell is one cell of a detected table.
+type TableCell struct {
+	Text string
+	// ColSpan is 1 unless the cell spans columns, which happens where a
+	// vertical ruling line is absent between two boundaries.
+	ColSpan int
 }
 
 // Rect is an axis-aligned rectangle in page space, with y increasing

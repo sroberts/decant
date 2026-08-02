@@ -69,14 +69,6 @@ func cmdConvert(ctx context.Context, args []string, stdout, stderr io.Writer) er
 
 	// Features accepted for CLI compatibility with the spec surface but not
 	// yet implemented. Refusing silently would be worse than saying so.
-	for name, milestone := range map[string]string{
-		"table-mode": "M5 (table detection)",
-	} {
-		if set[name] {
-			fmt.Fprintf(stderr, "decant: --%s is not implemented yet; it lands in %s\n", name, milestone)
-		}
-	}
-	_ = tableMode
 
 	nColumns, err := parseColumns(*columns)
 	if err != nil {
@@ -95,6 +87,7 @@ func cmdConvert(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	opts.Jobs = *jobs
 	opts.Columns = nColumns
 	opts.KeepSmallImages = *keepSmall
+	opts.Tables = decant.TableMode(*tableMode)
 	opts.Metadata = decant.Metadata{
 		Title: *title, Author: *author, Language: *language,
 	}
@@ -229,6 +222,13 @@ func summarize(w io.Writer, rep *decant.Report, outPath string) {
 	if rep.FurnitureRemoved > 0 {
 		fmt.Fprintf(w, "        removed %d running head(s) and page number(s)\n",
 			rep.FurnitureRemoved)
+	}
+	if n := len(rep.Tables); n > 0 {
+		total := 0
+		for _, v := range rep.Tables {
+			total += v
+		}
+		fmt.Fprintf(w, "        %d table(s) detected\n", total)
 	}
 	if rep.VectorPagesDropped > 0 {
 		fmt.Fprintf(w, "        %d page(s) carry vector artwork that was not rendered\n",

@@ -125,14 +125,15 @@
     "path": "009-pdflatex-geotopo/GeoTopo-komprimiert.pdf",
     "outcome": "ok",
     "pages": 117,
-    "blocks": 4385,
+    "blocks": 4316,
     "kinds": {
-      "blockquote": 84,
+      "blockquote": 83,
       "figure": 3,
-      "footnote": 7,
+      "footnote": 8,
       "heading": 97,
       "list": 119,
-      "paragraph": 4075
+      "paragraph": 3998,
+      "table": 8
     },
     "headings": {
       "1": 16,
@@ -146,23 +147,24 @@
     "multi_column_pages": 50,
     "decode_failure_bucket": "\u003c5%",
     "quality_score": 61,
-    "warnings": 18,
-    "fingerprint_sha": "71fb6610f09c1d9e",
-    "fingerprint_head": "h3 h3 p h1 p p h3 p p p p h3 p p p p p p h3 p p p list p ...",
-    "text_sha": "4890b76abda68a1a"
+    "warnings": 19,
+    "fingerprint_sha": "737486a20e1e34e8",
+    "fingerprint_head": "h3 h3 p h1 p p h3 p p p p h3 p p p p p p h3 p p table p p ...",
+    "text_sha": "adae31ddc16284de"
   },
   {
     "path": "009-pdflatex-geotopo/GeoTopo.pdf",
     "outcome": "ok",
     "pages": 117,
-    "blocks": 4385,
+    "blocks": 4316,
     "kinds": {
-      "blockquote": 84,
+      "blockquote": 83,
       "figure": 3,
-      "footnote": 7,
+      "footnote": 8,
       "heading": 97,
       "list": 119,
-      "paragraph": 4075
+      "paragraph": 3998,
+      "table": 8
     },
     "headings": {
       "1": 16,
@@ -176,10 +178,10 @@
     "multi_column_pages": 50,
     "decode_failure_bucket": "\u003c5%",
     "quality_score": 61,
-    "warnings": 18,
-    "fingerprint_sha": "71fb6610f09c1d9e",
-    "fingerprint_head": "h3 h3 p h1 p p h3 p p p p h3 p p p p p p h3 p p p list p ...",
-    "text_sha": "4890b76abda68a1a"
+    "warnings": 19,
+    "fingerprint_sha": "737486a20e1e34e8",
+    "fingerprint_head": "h3 h3 p h1 p p h3 p p p p h3 p p p p p p h3 p p table p p ...",
+    "text_sha": "adae31ddc16284de"
   },
   {
     "path": "010-pdflatex-forms/pdflatex-forms.pdf",
@@ -201,21 +203,21 @@
     "path": "011-google-doc-document/google-doc-document.pdf",
     "outcome": "ok",
     "pages": 1,
-    "blocks": 25,
+    "blocks": 20,
     "kinds": {
-      "heading": 2,
-      "paragraph": 23
+      "heading": 1,
+      "paragraph": 18,
+      "table": 1
     },
     "headings": {
-      "1": 1,
-      "2": 1
+      "1": 1
     },
     "chapters": 1,
     "decode_failure_bucket": "none",
     "quality_score": 100,
-    "fingerprint_sha": "6a2c2d74977b7c85",
-    "fingerprint_head": "h1 p p p p p p p p p p p p p p p h2 p p p p p p p ...",
-    "text_sha": "35abb7b47234e848"
+    "fingerprint_sha": "c01dc3399633a719",
+    "fingerprint_head": "h1 p p p p p p p p p p p p p p p table p p p",
+    "text_sha": "ea438a366caa4cf8"
   },
   {
     "path": "012-libreoffice-form/libreoffice-form.pdf",

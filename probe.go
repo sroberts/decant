@@ -220,8 +220,9 @@ func (c *Converter) Probe(ctx context.Context, r io.ReaderAt, size int64, stage 
 	res := &ProbeResult{Stage: stage}
 	if stage == StageStructure {
 		res.Notes = append(res.Notes,
-			"structure classification is spec section 4.6 and lands in M2; "+
-				"every block currently reports as a paragraph")
+			"block kinds shown here come from the page in isolation; the body "+
+				"font that spec section 4.6 measures against is a whole-document "+
+				"statistic, so a full conversion may classify differently")
 	}
 
 	for _, idx := range pages {

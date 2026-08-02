@@ -121,6 +121,43 @@ func TestEPUBCheckValidation(t *testing.T) {
 			opts: defaultOpts,
 			pdf:  captionDoc,
 		},
+		{
+			name: "table-html",
+			opts: func() decant.Options {
+				o := defaultOpts()
+				o.Tables = decant.TableHTML
+				return o
+			},
+			pdf: epubcheckTableDoc,
+		},
+		{
+			name: "table-colspan",
+			opts: func() decant.Options {
+				o := defaultOpts()
+				o.Tables = decant.TableHTML
+				return o
+			},
+			pdf: epubcheckSpanTableDoc,
+		},
+		{
+			name: "table-text",
+			opts: func() decant.Options {
+				o := defaultOpts()
+				o.Tables = decant.TableText
+				return o
+			},
+			pdf: epubcheckTableDoc,
+		},
+		{
+			name: "table-crosspoint",
+			opts: func() decant.Options {
+				o := defaultOpts()
+				o.Profile = decant.ProfileCrossPoint
+				o.ApplyProfileDefaults()
+				return o
+			},
+			pdf: epubcheckTableDoc,
+		},
 	}
 
 	for _, c := range cases {
@@ -248,4 +285,26 @@ func captionDoc() []byte {
 		AddImage("Im1", 50, 36, testpdf.GradientRGB(50, 36)).
 		AddPage(612, 792, body+draw+caption).
 		Build()
+}
+
+// epubcheckTableDoc carries a plain ruled table. Cell text is escaped-hostile
+// so the validator sees markup that had to be escaped rather than emitted.
+func epubcheckTableDoc() []byte {
+	return tableDoc(cells(
+		[]string{"Region", "Revenue & tax", "<Growth>"},
+		[]string{"Northeast", "412000", "12 pct"},
+		[]string{"Midwest", "298000", "4 pct"},
+		[]string{"Pacific", "530000", "19 pct"},
+	))
+}
+
+// epubcheckSpanTableDoc carries a table whose header row spans every column,
+// which is where a colspan attribute has to be emitted correctly.
+func epubcheckSpanTableDoc() []byte {
+	return tableDoc([][]testpdf.TableCell{
+		{{Text: "Quarterly results", Span: 3}},
+		{{Text: "Region"}, {Text: "Revenue"}, {Text: "Growth"}},
+		{{Text: "Northeast"}, {Text: "412000"}, {Text: "12 pct"}},
+		{{Text: "Midwest"}, {Text: "298000"}, {Text: "4 pct"}},
+	})
 }

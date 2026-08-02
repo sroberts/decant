@@ -188,7 +188,69 @@ type Config struct {
 	// hanging indent, and the indent rule would otherwise split every item
 	// between its first line and its continuation. Nil disables the check.
 	ListMarker func(string) bool
+
+	// --- tables, spec 4.8 ---
+
+	// TableMode selects how detected tables are emitted.
+	TableMode TableMode
+
+	// RuleMaxThickness is the stroke width above which a painted segment is a
+	// bar rather than a ruling line. Spec 4.8: 2 pt.
+	RuleMaxThickness float64
+
+	// RuleClusterTolerance is how far apart two rules may sit and still count
+	// as the same boundary. Spec 4.8 gives 2 pt for column alignment; the
+	// same figure serves here, since a boundary drawn as several segments is
+	// rarely off by more.
+	RuleClusterTolerance float64
+
+	// RuleRowCoverRatio is the fraction of a row's height a vertical rule
+	// must span to separate its cells. Below it the boundary is absent and
+	// the cells merge into a colspan.
+	RuleRowCoverRatio float64
+
+	// TableRegionGap is the vertical gap between rules beyond which they
+	// belong to separate tables.
+	TableRegionGap float64
+
+	// TableColumnTolerance is how close two column starts must be to count as
+	// the same boundary. Spec 4.8: 2 pt.
+	TableColumnTolerance float64
+
+	// TableMinSharedColumns is how many boundaries every row must share for
+	// the alignment signal to fire. Spec 4.8: 2.
+	TableMinSharedColumns int
+
+	// TableMinRows is the number of consecutive tabulated lines the alignment
+	// signal needs. Spec 4.8: 3.
+	TableMinRows int
+
+	// TableMinFilledRatio is the fraction of a ruled grid's cells that must
+	// carry text for it to be a table.
+	//
+	// Not in the spec, and the guard the ruling signal most needs: diagrams
+	// draw axis-aligned lines that form apparent grids, and without this a
+	// mathematics textbook yields seventeen phantom tables, some of which
+	// shred a figure's caption into cells.
+	TableMinFilledRatio float64
 }
+
+// TableMode selects how a detected table is emitted, per spec 4.8.
+type TableMode string
+
+const (
+	// TableAuto picks by confidence: a real table at high, a rasterized
+	// region at medium, space-preserved text at low.
+	TableAuto TableMode = "auto"
+	// TableHTML always emits a table.
+	TableHTML TableMode = "html"
+	// TableImage rasterizes the region.
+	TableImage TableMode = "image"
+	// TableText emits space-preserved text.
+	TableText TableMode = "text"
+	// TableDrop discards detected tables.
+	TableDrop TableMode = "drop"
+)
 
 // Dehyphenator decides whether a line-break hyphen is a typesetting artifact
 // or part of the word. Spec 4.6 inverts Liang's algorithm to answer it.
@@ -237,5 +299,15 @@ func DefaultConfig() Config {
 		FurnitureRepeatRatio: 0.6,
 		FurnitureSamplePages: 20,
 		FurnitureMinPages:    5,
+
+		TableMode:             TableAuto,
+		RuleMaxThickness:      2,
+		RuleClusterTolerance:  2,
+		RuleRowCoverRatio:     0.6,
+		TableRegionGap:        36,
+		TableColumnTolerance:  2,
+		TableMinSharedColumns: 2,
+		TableMinRows:          3,
+		TableMinFilledRatio:   0.5,
 	}
 }

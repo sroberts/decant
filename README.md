@@ -7,7 +7,7 @@ order. decant is a single static Go binary that recovers the second from the
 first, plus an importable library so a TUI can drive the same code path
 without shelling out.
 
-Status: **M4**. Everything except table detection: text extraction, column
+Status: **M5**. Table detection, text extraction, column
 detection, paragraph reconstruction, heading classification, outline-driven
 chapter splitting, images with figures and captions, furniture removal,
 dehyphenation, lists, blockquotes, code blocks, and linked footnotes. Every
@@ -153,6 +153,7 @@ model at any stage.
 - Running head and folio removal by repeated text and repeated position
 - Dehyphenation by inverted Liang pattern matching in eight languages
 - Ordered and unordered lists with inferred start, blockquotes, code blocks
+- Table detection from ruling lines and column alignment, with colspan
 - Superscript detection and footnotes linked with `epub:type` noteref
 - Deterministic EPUB 3.3 output with an EPUB 2 NCX fallback
 - Encrypted, scanned, and malformed input detection with distinct exit codes
@@ -160,8 +161,9 @@ model at any stage.
 
 ## Not implemented yet
 
-`--table-mode` is accepted and prints a notice; table detection is M5.
-`--jobs` is accepted but page processing is currently sequential.
+`--table-mode=image` is accepted but degrades to text with a warning: it
+needs the vector renderer that spec §13 keeps open. `--jobs` is accepted but
+page processing is currently sequential.
 
 Dehyphenation ships patterns for English, German, Spanish, French, Italian,
 Dutch, Polish, and Portuguese. Russian and Swedish are **deliberately
@@ -179,6 +181,17 @@ reported rather than dropped silently: the conversion report counts painted
 paths per page and warns when a page carries enough of them to be a diagram.
 Rasterization is spec §13's one remaining open decision.
 
+Table detection still over-fires on mathematical typesetting. On the corpus's
+LaTeX textbook it reports eight medium-confidence tables that are really
+plotted axes and matrix-like displays; `--table-mode=auto` renders those as
+space-preserved text rather than as `<table>`, so no false table markup
+reaches the reader, but the layout is still wrong. `--table-mode=drop` turns
+detection off entirely and leaves the text as paragraphs. Three guards
+already narrow this — a fill ratio, a rejection of grids whose cells hold one
+character each, and a rule that a table may not straddle the page's own
+columns — and further tuning needs a corpus with more real tables in it than
+this one has.
+
 ## Milestones
 
 | | Scope | Status |
@@ -187,8 +200,8 @@ Rasterization is spec §13's one remaining open decision.
 | M2 | Block segmentation, column detection, headings, outline TOC, chapter splitting | done |
 | M3 | Image extraction, placement, re-encoding, figures and captions | done |
 | M4 | Furniture removal, dehyphenation, footnotes, lists, blockquotes | done |
-| M5 | Table detection, device profiles, conversion report, `probe` | next (partial) |
-| M6 | Public API stabilization and CrossPoint TUI integration | |
+| M5 | Table detection, device profiles, conversion report, `probe` | done |
+| M6 | Public API stabilization and CrossPoint TUI integration | next |
 
 M1 through M3 ship before anything gets optimized. Layout heuristics need
 real-corpus feedback; tuning thresholds against three test files produces

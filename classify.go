@@ -25,9 +25,10 @@ type blockFeatures struct {
 	// outlineForced marks a block whose level came from the PDF outline,
 	// which is authoritative and must not be overwritten by inference.
 	outlineForced bool
-	// isFigure marks a block that carries an image rather than text, which
-	// classification leaves alone.
+	// isFigure marks a block that carries an image rather than text, and
+	// isTable one that carries cells. Classification leaves both alone.
 	isFigure bool
+	isTable  bool
 
 	// fixedPitch marks a block set in a monospaced family, which spec 4.6
 	// treats as code.
@@ -125,7 +126,7 @@ func (c *Converter) classify(blocks []Block, feats []blockFeatures, hist fontHis
 	// First pass: decide which blocks are headings.
 	isHeading := make([]bool, len(blocks))
 	for i := range blocks {
-		if feats[i].isFigure {
+		if feats[i].isFigure || feats[i].isTable {
 			continue
 		}
 		if feats[i].outlineForced {
@@ -141,7 +142,7 @@ func (c *Converter) classify(blocks []Block, feats []blockFeatures, hist fontHis
 
 	headings := 0
 	for i := range blocks {
-		if feats[i].isFigure {
+		if feats[i].isFigure || feats[i].isTable {
 			continue
 		}
 		if !isHeading[i] {

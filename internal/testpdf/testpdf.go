@@ -557,3 +557,90 @@ func ClipPath(n int, x, y, w, h float64) string {
 	}
 	return sb.String()
 }
+
+// TableCell is one cell of a ruled table fixture.
+type TableCell struct {
+	Text string
+	// Span merges this cell with the following ones by omitting the vertical
+	// rules between them, which is how a colspan appears in a PDF.
+	Span int
+}
+
+// RuledTable emits a table drawn with ruling lines: horizontal rules between
+// every row, vertical rules between every column, and the cell text.
+func RuledTable(font string, size, x, top, colWidth, rowHeight float64, rows [][]TableCell) string {
+	cols := 0
+	for _, r := range rows {
+		n := 0
+		for _, c := range r {
+			n += maxSpan(c.Span)
+		}
+		if n > cols {
+			cols = n
+		}
+	}
+	if cols == 0 || len(rows) == 0 {
+		return ""
+	}
+
+	width := colWidth * float64(cols)
+	height := rowHeight * float64(len(rows))
+	bottom := top - height
+
+	var sb strings.Builder
+	sb.WriteString("0.5 w\n")
+
+	for i := 0; i <= len(rows); i++ {
+		y := top - rowHeight*float64(i)
+		fmt.Fprintf(&sb, "%g %g m %g %g l S\n", x, y, x+width, y)
+	}
+	for i := 0; i <= cols; i++ {
+		cx := x + colWidth*float64(i)
+		if i == 0 || i == cols {
+			fmt.Fprintf(&sb, "%g %g m %g %g l S\n", cx, top, cx, bottom)
+			continue
+		}
+		for r, row := range rows {
+			if spansBoundary(row, i) {
+				continue
+			}
+			y0 := top - rowHeight*float64(r)
+			y1 := y0 - rowHeight
+			fmt.Fprintf(&sb, "%g %g m %g %g l S\n", cx, y0, cx, y1)
+		}
+	}
+
+	sb.WriteString("BT\n")
+	fmt.Fprintf(&sb, "/%s %g Tf\n", font, size)
+	for r, row := range rows {
+		y := top - rowHeight*float64(r) - rowHeight*0.7
+		col := 0
+		for _, c := range row {
+			fmt.Fprintf(&sb, "1 0 0 1 %g %g Tm\n", x+colWidth*float64(col)+2, y)
+			fmt.Fprintf(&sb, "(%s) Tj\n", escapeString(c.Text))
+			col += maxSpan(c.Span)
+		}
+	}
+	sb.WriteString("ET\n")
+	return sb.String()
+}
+
+func maxSpan(n int) int {
+	if n < 1 {
+		return 1
+	}
+	return n
+}
+
+// spansBoundary reports whether a cell in the row crosses column boundary i.
+func spansBoundary(row []TableCell, i int) bool {
+	col := 0
+	for _, c := range row {
+		span := maxSpan(c.Span)
+		if col < i && i < col+span {
+			return true
+		}
+		col += span
+	}
+	return false
+}

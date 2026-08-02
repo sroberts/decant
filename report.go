@@ -70,6 +70,8 @@ type PageMetrics struct {
 	// Images is the number of images placed from the page, after the drop
 	// rules in spec section 4.7.
 	Images int `json:"images"`
+	// Tables counts tables detected on the page.
+	Tables int `json:"tables,omitempty"`
 	// VectorPaints counts painted path operations on the page. decant does
 	// not render vector artwork, so a high count means content was lost.
 	VectorPaints int `json:"vector_paints,omitempty"`
@@ -116,6 +118,9 @@ type Report struct {
 	ImageBytes int `json:"image_bytes"`
 	// Hyphenation summarizes the dehyphenation decisions in spec 4.6.
 	Hyphenation HyphenationReport `json:"hyphenation"`
+	// Tables counts detected tables by confidence, which is what
+	// --table-mode=auto keys on.
+	Tables map[string]int `json:"tables,omitempty"`
 	// FurnitureRemoved counts blocks dropped as running heads or folios.
 	FurnitureRemoved int `json:"furniture_removed"`
 	// VectorPagesDropped counts pages carrying vector artwork that decant did
@@ -146,6 +151,7 @@ func newReport(source string) *Report {
 		Source:   source,
 		Blocks:   map[BlockKind]int{},
 		Headings: map[int]int{},
+		Tables:   map[string]int{},
 	}
 }
 
@@ -165,6 +171,17 @@ func (r *Report) info(stage string, page int, msg string) {
 	r.Diagnostics = append(r.Diagnostics, Diagnostic{
 		Severity: SeverityInfo, Stage: stage, Page: page, Message: msg,
 	})
+}
+
+// warnOnce records a document-level warning only the first time it is seen,
+// so a condition that recurs on every page reports once.
+func (r *Report) warnOnce(stage, msg string) {
+	for _, d := range r.Diagnostics {
+		if d.Stage == stage && d.Message == msg {
+			return
+		}
+	}
+	r.warn(stage, -1, msg)
 }
 
 func (r *Report) warn(stage string, page int, msg string) {

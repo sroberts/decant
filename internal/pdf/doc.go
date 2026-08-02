@@ -88,6 +88,8 @@ type Page struct {
 	content []byte
 	res     types.Dict
 	baseCTM Matrix
+	// annots is the raw /Annots array, walked lazily by Links.
+	annots types.Array
 }
 
 // ToPageSpace converts a point from PDF user space to this page's space,
@@ -276,6 +278,9 @@ func (d *Document) Page(i int) (p *Page, err error) {
 		Rotate:  rot,
 		res:     attrs.Resources,
 		baseCTM: baseCTM(box, rot),
+	}
+	if arr, err := d.ctx.XRefTable.DereferenceArray(dict["Annots"]); err == nil {
+		p.annots = arr
 	}
 	w, h := box.Width(), box.Height()
 	if rot == 90 || rot == 270 {
@@ -523,22 +528,27 @@ func (d *Document) resolveDest(item types.Dict) (int, float64, bool) {
 	case types.Array:
 		return d.destFromArray(v)
 	case types.Name:
-		arr, err := xref.DereferenceDestArray(v.Value())
-		if err != nil || arr == nil {
-			return -1, 0, false
-		}
-		return d.destFromArray(arr)
+		return d.destFromName(v.Value())
 	case types.StringLiteral:
-		arr, err := xref.DereferenceDestArray(v.Value())
-		if err != nil || arr == nil {
-			return -1, 0, false
-		}
-		return d.destFromArray(arr)
+		return d.destFromName(v.Value())
 	case types.HexLiteral:
-		arr, err := xref.DereferenceDestArray(v.Value())
-		if err != nil || arr == nil {
-			return -1, 0, false
-		}
+		return d.destFromName(v.Value())
+	}
+	return -1, 0, false
+}
+
+// destFromName resolves a named destination.
+//
+// pdfcpu's DereferenceDestArray is tried first and then the hand-walked name
+// tree, because the former reads a map only pdfcpu's validation pass fills
+// and decant reads with ValidationRelaxed. Every named destination in a TeX
+// document therefore failed here before namedDest existed, which is what left
+// GeoTopo's 509 link annotations unresolved.
+func (d *Document) destFromName(name string) (int, float64, bool) {
+	if arr, err := d.ctx.XRefTable.DereferenceDestArray(name); err == nil && arr != nil {
+		return d.destFromArray(arr)
+	}
+	if arr, ok := d.namedDest(name); ok {
 		return d.destFromArray(arr)
 	}
 	return -1, 0, false

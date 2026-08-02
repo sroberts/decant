@@ -127,6 +127,23 @@ func recoverMalformed(detail string, errp *error) {
 	}
 }
 
+func init() {
+	// Cut pdfcpu off from the user's config directory.
+	//
+	// NewDefaultConfiguration otherwise reads $XDG_CONFIG_HOME/pdfcpu/config.yml
+	// and creates it when absent, caching the result in an unsynchronized
+	// package global and calling fault.Fail (a panic) on any problem. Three
+	// things follow that decant cannot accept. Two goroutines opening
+	// documents at once race on that global and on the file itself, which is
+	// how CI first saw "config problem: EOF" from a half-written file.
+	// Behaviour would depend on a file outside the input, against the
+	// determinism guarantee. And a stray config would turn every conversion
+	// on the machine into ErrMalformed.
+	//
+	// "disable" is pdfcpu's own sentinel for the built-in defaults.
+	model.ConfigPath = "disable"
+}
+
 // Open reads a PDF. It returns *ErrEncrypted for encrypted files and
 // *ErrMalformed when the xref cannot be recovered.
 func Open(r io.ReaderAt, size int64) (doc *Document, err error) {
@@ -139,7 +156,6 @@ func Open(r io.ReaderAt, size int64) (doc *Document, err error) {
 	// but still yield usable text. Spec principle 3 prefers a diagnostic over
 	// a refusal.
 	conf.ValidationMode = model.ValidationRelaxed
-	// Keep pdfcpu from writing anything or consulting a user config dir.
 	conf.WriteXRefStream = false
 
 	ctx, err := api.ReadContext(rs, conf)

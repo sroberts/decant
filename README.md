@@ -195,8 +195,14 @@ model at any stage.
 ## Not implemented yet
 
 `--table-mode=image` is accepted but degrades to text with a warning: it
-needs the vector renderer that spec §13 keeps open. `--jobs` is accepted but
-page processing is currently sequential.
+needs the vector renderer that spec §13 keeps open.
+
+`--jobs` is **reserved**: it is accepted, prints a notice, and does nothing.
+Page processing is sequential and stays that way. Stages 1 and 2 run inside
+pdfcpu, which mutates its cross-reference table on every dereference with no
+lock, and they are two thirds of per-page time; the rest is about 4% of a
+conversion. `Options.Jobs` was removed from the library rather than shipped
+as a permanent no-op. See spec §4.
 
 Dehyphenation ships patterns for English, German, Spanish, French, Italian,
 Dutch, Polish, and Portuguese. Russian and Swedish are **deliberately

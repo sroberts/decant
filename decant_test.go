@@ -112,16 +112,22 @@ func TestDeterministicOutput(t *testing.T) {
 		t.Fatalf("two conversions of the same input differed: %d vs %d bytes", len(a), len(b))
 	}
 
-	// Spec section 9 requires byte-identical output across --jobs values.
-	optsA := defaultOpts()
-	optsA.Jobs = 1
-	optsB := defaultOpts()
-	optsB.Jobs = 16
-
-	c, _ := buildDoc(t, src, optsA)
-	d, _ := buildDoc(t, src, optsB)
-	if !bytes.Equal(c, d) {
-		t.Error("output differed between --jobs=1 and --jobs=16")
+	// A fresh Converter must reach the same bytes as a reused one, which is
+	// what makes the guarantee about the input rather than about process
+	// state. This replaces a comparison across --jobs values: that option no
+	// longer exists, and while it did it was ignored, so the comparison held
+	// trivially and tested nothing.
+	conv, err := decant.New(defaultOpts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fresh bytes.Buffer
+	if _, err := conv.Convert(context.Background(),
+		bytes.NewReader(src), int64(len(src)), &fresh); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(a, fresh.Bytes()) {
+		t.Error("a separately constructed Converter produced different bytes")
 	}
 }
 

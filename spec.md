@@ -83,7 +83,7 @@ decant version
 | `--images` | `keep` | `keep`, `grayscale`, `drop` |
 | `--report` | none | Write JSON conversion report to path |
 | `--strict` | false | Non-zero exit when any quality threshold is breached |
-| `--jobs` | `NumCPU` | Page-parallel workers; does not affect output bytes |
+| `--jobs` | `NumCPU` | Reserved. Accepted and ignored; page processing is sequential. See §4 |
 | `--date` | PDF ModDate | Fixed timestamp for reproducible builds; honors `SOURCE_DATE_EPOCH` |
 
 ### Exit codes
@@ -106,7 +106,17 @@ Diagnostics go to stderr. `--json` output goes to stdout, unmixed.
 parse → glyphs → lines → blocks → furniture → classify → assemble → serialize
 ```
 
-Stages 2 through 6 run per page and parallelize across `--jobs`. Stage 7 requires the full document (heading rank, footnote resolution, TOC).
+Stages 2 through 6 run per page. Stage 7 requires the full document (heading rank, footnote resolution, TOC).
+
+**Parallelism, revised (M6).** This section originally had stages 2 through 6 parallelize across `--jobs`. Measurement retired that.
+
+Stage 2 is glyph extraction, and it runs inside pdfcpu. `indRefToObject` writes `xRefTable.CurObj` on every dereference and replaces `entry.Object` when decoding a lazy object stream, with no mutex anywhere, so concurrent page access is a data race rather than a speedup. Stage 1 has the same constraint. On the corpus's largest document those two are 66.6% of per-page time, which caps any page-parallel speedup at 1.5× by Amdahl.
+
+It is worse than that in practice. Page analysis is about 5% of a conversion's wall clock: on that document the whole 117-page text pipeline runs in 160 ms while three images cost 650 ms. Parallelizing stages 3 through 6 would return roughly 4%.
+
+`Options.Jobs` is therefore removed from §7 and `--jobs` is reserved at the CLI, accepted and ignored with a notice. Shipping a field that Go compatibility would make permanent, for a concept the architecture cannot deliver, is the one decision that cannot be reversed after `v1.0.0`; adding it back when parallelism exists is not a breaking change.
+
+If parallelism is revisited, image processing is the target rather than pages. Extraction through pdfcpu stays serial, but re-encoding is pure Go and pipelining the two would overlap roughly 360 ms of extraction against 290 ms of processing.
 
 ### 4.1 Parse
 
@@ -356,7 +366,6 @@ type Options struct {
     Metadata     Metadata
     Pages        PageRange
     Heuristics   Heuristics // every threshold from section 4
-    Jobs         int
     Deterministic time.Time
 }
 
@@ -400,7 +409,7 @@ Use stdlib `flag` with manual subcommand dispatch rather than cobra. The CLI sur
 | Peak RSS, 300-page PDF | under 300 MB |
 | Peak RSS, 2,000-page PDF | under 800 MB |
 | Binary size | under 25 MB including embedded hyphenation patterns |
-| Determinism | byte-identical output across `--jobs=1` and `--jobs=16` |
+| Determinism | byte-identical output from repeated conversion of one input |
 
 Stream page processing rather than holding every page's glyph set. Retain only the block model after stage 6 and release glyph slices; glyphs dominate memory at roughly 60 bytes each and a dense page carries 5,000 of them.
 
@@ -408,7 +417,7 @@ Stream page processing rather than holding every page's glyph set. Retain only t
 
 **Corpus-driven golden tests.** Scott supplies the corpus at build time, drawn from his actual library: academic papers and trade books both. Backfill the gaps from that set with a two-column LaTeX paper, a Word export, an InDesign-set book with drop caps, a government report heavy with tables, a scanned book with an OCR layer, a CJK document, and a deliberately malformed PDF with a broken xref. Academic PDFs in the corpus mean column detection stays on the M2 critical path and cannot be deferred. Assert on extracted plain text and a structure fingerprint (ordered list of element types and heading levels), not on byte-identical XHTML, so formatting refactors do not churn the corpus.
 
-**Property tests.** Reading order preserves the sentence-level word sequence, verified against `pdftotext -layout` output for single-column documents. Determinism verified by converting twice at different `--jobs` values and diffing.
+**Property tests.** Reading order preserves the sentence-level word sequence, verified against `pdftotext -layout` output for single-column documents. Determinism verified by converting each file twice through separately constructed Converters and diffing.
 
 **Content fidelity (M6).** "Does the EPUB still say what the PDF said" splits in two, and the halves need opposite treatment because only one has a trustworthy oracle.
 

@@ -96,6 +96,7 @@ func layoutConfig(h Heuristics) layout.Config {
 		MinImagePoints:        h.MinImagePoints,
 		MinImageAreaRatio:     h.MinImageAreaRatio,
 		InlineImageWidthRatio: h.InlineImageWidthRatio,
+		StyleMinLetters:       h.StyleMinLetters,
 		CaptionGapLines:       h.CaptionGapLines,
 		CaptionSizeRatio:      h.CaptionSizeRatio,
 		CaptionOverlapRatio:   h.CaptionOverlapRatio,
@@ -450,12 +451,30 @@ func (c *Converter) analyzePage(
 
 			supers := layout.SuperscriptLabels(text)
 
+			// Bold and italic runs, as offsets into the trimmed block text.
+			lead := len(p.Text) - len(strings.TrimLeft(p.Text, " \t"))
+			var styles []StyleRun
+			for _, sp := range layout.MapStyles(cfg, &p, pc.Fonts) {
+				start, end := sp.Start-lead, sp.End-lead
+				if start < 0 {
+					start = 0
+				}
+				if end > len(text) {
+					end = len(text)
+				}
+				if start >= end {
+					continue
+				}
+				styles = append(styles, StyleRun{
+					Start: start, End: end, Bold: sp.Bold, Italic: sp.Italic,
+				})
+			}
+
 			// Cross-references. Spans are offsets into p.Text, which is
 			// trimmed again on the way into the block, so the leading trim
 			// comes off here.
 			var refs []CrossRef
 			if len(pageLinks) > 0 {
-				lead := len(p.Text) - len(strings.TrimLeft(p.Text, " \t"))
 				for _, sp := range layout.MapLinks(cfg, &p, pc.Fonts, pageLinks) {
 					start, end := sp.Start-lead, sp.End-lead
 					if start < 0 {
@@ -505,6 +524,7 @@ func (c *Converter) analyzePage(
 					Kind:         KindParagraph,
 					Text:         text,
 					Links:        refs,
+					Styles:       styles,
 					Superscripts: supers,
 					Page:         idx,
 					Bounds:       toRect(p.Bounds),

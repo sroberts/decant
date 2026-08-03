@@ -182,6 +182,9 @@ type Config struct {
 	// KeepHeaders retains running heads and folios. Spec 3: --keep-headers.
 	KeepHeaders bool
 
+	// StyleMinLetters is the shortest bold or italic run that is emitted as
+	// emphasis.
+	StyleMinLetters int
 	// ListMarker reports whether a line opens with a list marker.
 	//
 	// Paragraph reconstruction needs it: spec 4.6 sets list items with a
@@ -262,6 +265,7 @@ type Dehyphenator interface {
 func DefaultConfig() Config {
 	return Config{
 		BaselineTolerance:    0.3,
+		StyleMinLetters:      2,
 		SpaceGapRatio:        0.25,
 		RotationTolerance:    5,
 		KeepRotated:          false,

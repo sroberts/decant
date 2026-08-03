@@ -8,7 +8,7 @@ decant converts fixed-layout, text-layer PDFs into semantic, reflowable EPUB 3. 
 
 `spec.md` is the authoritative design document — read the relevant section before changing a stage, and update §13 (open/closed decisions, with dates) when a design decision changes. Code comments reference spec sections by number; keep those references accurate when you move logic.
 
-Currently at **M5** complete: tables, profiles, report, and `probe`. M6 (API stabilization and TUI integration) is next.
+Currently at **M6** complete: public API documented and pinned by contract tests, content-fidelity testing, cross-references, xref rebuild, scope warnings, inline emphasis. The spec has no open decisions and no unimplemented sections.
 
 ## Commands
 
@@ -74,6 +74,7 @@ Pipeline: `parse → glyphs → lines → blocks → furniture → classify → 
 - **Vector artwork is dropped, and that is decided, not pending** (spec §13, closed 2026-08-03). Do not treat the vector diagnostic as a placeholder for a renderer. If one is ever built, note that the interpreter keeps only bounding boxes — `interpreter.path`, `.subpaths`, `.cur` are all `Rect`, so curve operators collapse and no point sequence survives — and interprets no colour operator at all. The work is a subsystem, not a gap to fill in.
 - **Do not ship API surface for unimplemented behaviour.** Go compatibility makes an exported constant or field permanent at `v1.0.0`, and adding one back later is not a breaking change while removing it is. `Options.Jobs` and `TableMode`'s `image` value were both removed on that argument rather than carried as no-ops. Re-adding either means implementing it first.
 - **`--jobs` is reserved and does nothing, deliberately.** `Options.Jobs` was removed before v1.0.0: stages 1–2 run inside pdfcpu, whose xref table is mutated on every dereference with no lock, so pages cannot parallelize; the remainder is ~4% of a conversion. Spec §4 records the measurement. Do not re-add the field without implementing something — Go compatibility would make it permanent.
+- **TeX math italic is not emphasis.** §4.6 derives `<em>` from the font's italic flag, and a TeX math family sets it on every variable it draws: honouring it wrapped 6,947 single letters on GeoTopo. `Font.Math()` excludes those families and `StyleMinLetters` (2) drops sub-word runs. If emphasis detection is ever changed, re-measure that file before believing the result.
 - **Images dominate conversion time, not layout.** On GeoTopo three images cost 650 ms of an 810 ms conversion; the whole 117-page text pipeline is 160 ms. Roughly 360 ms of that is inside pdfcpu's extraction and out of reach. Before optimizing anything here, measure — the profile is not where intuition puts it. `--images=drop` against `--images=keep` is the quickest way to size the image share.
 - **Scale into `image.RGBA`, never `image.NRGBA`.** `x/image/draw` generates a fast path per concrete destination type and falls back to a generic `RGBA64Image` path otherwise. NRGBA has no generated path, so the vertical pass silently took the fallback and scaling became 13% of the whole conversion.
 - **Line art is palettized before PNG encoding.** Palettizing is the entire reason spec §4.7 picks PNG on a low colour count; Go's encoder otherwise writes full RGBA, which turned a 255-colour test chart into 1.7 MB where the paletted form is 447 KB.
@@ -126,7 +127,7 @@ Fuzzing is not optional — malformed PDFs are a hostile input class and the par
 
 ## Milestones
 
-M1 interpreter + paragraphs (**done**) → M2 segmentation, columns, headings, TOC (**done**) → M3 images (**done**) → M4 furniture, dehyphenation, footnotes, lists (**done**) → M5 tables, profiles, report, `probe` (**done**) → M6 API stabilization + TUI integration.
+M1 interpreter + paragraphs (**done**) → M2 segmentation, columns, headings, TOC (**done**) → M3 images (**done**) → M4 furniture, dehyphenation, footnotes, lists (**done**) → M5 tables, profiles, report, `probe` (**done**) → M6 API stabilization, content fidelity, remaining spec gaps (**done**). The CrossPoint TUI is a separate application depending on this module, not a deliverable of it.
 
 Ship M1–M3 before optimizing: tuning layout thresholds against three test files produces overfitted garbage. Tag `v0.x` through M5; the API is unstable until `v1.0.0`.
 

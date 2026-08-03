@@ -276,6 +276,13 @@ type Heuristics struct {
 	// grids; without this guard a mathematics textbook yields phantom tables.
 	TableMinFilledRatio float64
 
+	// StyleMinLetters is the shortest bold or italic run emitted as emphasis,
+	// in letters. Default 2.
+	//
+	// Not in spec section 4.6, and a guard against its rule misfiring. A
+	// single italic letter mid-sentence is a variable or a symbol rather than
+	// emphasis, and a mathematics document is made of them.
+	StyleMinLetters int
 	// RTLLetterRatio is the fraction of a document's letters that must belong
 	// to a right-to-left script before spec section 1's scope warning fires.
 	// Default 0.2.
@@ -347,6 +354,7 @@ func DefaultHeuristics() Heuristics {
 		FootnoteSizeRatio:    0.1,
 		SuperscriptRiseEm:    0.2,
 		SuperscriptSizeRatio: 0.85,
+		StyleMinLetters:      2,
 		RTLLetterRatio:       0.2,
 		VectorMinPaints:      24,
 

@@ -185,6 +185,8 @@ model at any stage.
 - Dehyphenation by inverted Liang pattern matching in eight languages
 - Ordered and unordered lists with inferred start, blockquotes, code blocks
 - Table detection from ruling lines and column alignment, with colspan
+- Inline bold and italic as `<strong>` and `<em>`, with TeX math italic
+  excluded so a formula's variables do not become emphasis
 - Internal cross-references rewritten from PDF `/Link` annotations to `href`
   fragments, anchoring only the blocks something points at
 - Superscript detection and footnotes linked with `epub:type` noteref
@@ -260,7 +262,7 @@ this one has.
 | M3 | Image extraction, placement, re-encoding, figures and captions | done |
 | M4 | Furniture removal, dehyphenation, footnotes, lists, blockquotes | done |
 | M5 | Table detection, device profiles, conversion report, `probe` | done |
-| M6 | Public API stabilization and CrossPoint TUI integration | next |
+| M6 | Public API stabilization, content fidelity, remaining spec gaps | done |
 
 M1 through M3 ship before anything gets optimized. Layout heuristics need
 real-corpus feedback; tuning thresholds against three test files produces

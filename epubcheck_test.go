@@ -149,6 +149,11 @@ func TestEPUBCheckValidation(t *testing.T) {
 			pdf: epubcheckTableDoc,
 		},
 		{
+			name: "inline-emphasis",
+			opts: defaultOpts,
+			pdf:  emphasisDoc,
+		},
+		{
 			name: "cross-references",
 			opts: defaultOpts,
 			pdf:  linkDoc,

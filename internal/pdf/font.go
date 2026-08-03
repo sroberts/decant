@@ -666,6 +666,10 @@ func (f *Font) SpaceWidth() (float64, bool) {
 	return 0, false
 }
 
+// Math reports whether the font is a TeX math family, where italic marks a
+// variable rather than emphasis.
+func (f *Font) Math() bool { return isTeXMathFont(f.BaseFont) }
+
 // Vertical reports whether the font selects vertical writing mode.
 func (f *Font) Vertical() bool { return f.composite && f.encCMap.Vertical() }
 

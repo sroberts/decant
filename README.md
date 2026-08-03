@@ -206,6 +206,9 @@ lock, and they are two thirds of per-page time; the rest is about 4% of a
 conversion. `Options.Jobs` was removed from the library rather than shipped
 as a permanent no-op. See spec §4.
 
+Hyphenation language comes from `--language`, then the PDF's `/Lang`, then
+XMP `dc:language`, then English.
+
 Dehyphenation ships patterns for English, German, Spanish, French, Italian,
 Dutch, Polish, and Portuguese. Russian and Swedish are **deliberately
 absent**: their `hyph-utf8` files are LPPL-only, and spec §4.6 says to drop

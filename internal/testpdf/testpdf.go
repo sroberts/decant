@@ -23,6 +23,8 @@ type Builder struct {
 	outline []bookmark
 	// xobjects holds image XObjects available to every page.
 	xobjects map[string]xobject
+	xmp      string
+	lang     string
 }
 
 // xobject is an uncompressed 8-bit RGB image.
@@ -68,6 +70,19 @@ func New() *Builder {
 }
 
 // SetInfo sets an /Info dictionary entry, e.g. Title or Author.
+// SetXMP attaches an XMP metadata packet to the catalog. The body is the
+// RDF payload; the packet wrapper is supplied.
+func (b *Builder) SetXMP(body string) *Builder {
+	b.xmp = body
+	return b
+}
+
+// SetLang sets the catalog's /Lang entry.
+func (b *Builder) SetLang(lang string) *Builder {
+	b.lang = lang
+	return b
+}
+
 func (b *Builder) SetInfo(key, value string) *Builder {
 	b.info[key] = value
 	return b
@@ -336,6 +351,13 @@ func (b *Builder) Build() []byte {
 	if len(b.outline) > 0 {
 		totalObjs = nextObj - 1
 	}
+	// The metadata stream takes the number after everything else, so adding
+	// it does not renumber the objects the rest of the builder references.
+	xmpNr := 0
+	if b.xmp != "" {
+		totalObjs++
+		xmpNr = totalObjs
+	}
 
 	var buf bytes.Buffer
 	offsets := make([]int, totalObjs+1)
@@ -355,8 +377,26 @@ func (b *Builder) Build() []byte {
 	if len(b.outline) > 0 {
 		catalog += fmt.Sprintf(" /Outlines %d 0 R", outlineRootNr)
 	}
+	if b.lang != "" {
+		catalog += fmt.Sprintf(" /Lang (%s)", escapeString(b.lang))
+	}
+	if b.xmp != "" {
+		catalog += fmt.Sprintf(" /Metadata %d 0 R", xmpNr)
+	}
 	catalog += " >>"
 	obj(catalogNr, catalog)
+
+	if b.xmp != "" {
+		packet := "<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n" +
+			"<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\n" +
+			"<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\" " +
+			"xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\n" +
+			"<rdf:Description rdf:about=\"\">\n" + b.xmp +
+			"\n</rdf:Description>\n</rdf:RDF>\n</x:xmpmeta>\n<?xpacket end=\"w\"?>"
+		obj(xmpNr, fmt.Sprintf(
+			"<< /Type /Metadata /Subtype /XML /Length %d >>\nstream\n%s\nendstream",
+			len(packet), packet))
+	}
 
 	// Page tree.
 	var kids strings.Builder

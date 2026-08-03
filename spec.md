@@ -193,6 +193,14 @@ Extract image XObjects with their placement rectangle from the CTM at draw time.
 - Otherwise re-encode: JPEG q85 for photographic content, PNG for line art, decided by unique-color count against a 256 threshold. Device profiles override this: `crosspoint` forces JPEG pending verification of CrossPoint's image decoder (section 5.1)
 - Scale with Catmull-Rom resampling when the longest edge exceeds `--image-max-width`
 
+**Performance notes (M6).** Measured on the corpus's LaTeX textbook, where three images account for 650 ms of an 810 ms conversion while the entire 117-page text pipeline accounts for 160 ms. Images, not layout, are what a conversion spends its time on.
+
+- Resampling targets an `image.RGBA` destination. `x/image/draw` generates a fast path per concrete destination type and falls back to a generic `RGBA64Image` path otherwise; `NRGBA` has none, so the vertical pass took the fallback while the horizontal pass did not. Premultiplied resampling is also the more correct of the two, since averaging non-premultiplied colour across a partly transparent edge weights fully transparent pixels as though they were opaque.
+- PNG uses `DefaultCompression`. Across the corpus the strongest level buys 0.05% of output size for 4% of conversion time, which is the wrong trade for a format already carrying most of its win in the palette.
+- The dedup digest converts a row at a time rather than the whole image. It runs on the source, before any scaling, so a 4000×3000 photograph needed 48 MB of scratch against §9's budget; it now needs 16 KB. The bytes fed to the hash are unchanged, so digests and therefore dedup are unaffected.
+
+Together these are about 8% of an image-heavy conversion, and every output image is pixel-identical. What remains is roughly 360 ms inside pdfcpu's image extraction, which is not reachable without forking it.
+
 Place each image as a block-level `<figure>` at its reading-order position. Images narrower than 40% of the text column and vertically inside a paragraph inline as `<img>` instead.
 
 ### 4.8 Tables

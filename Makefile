@@ -1,4 +1,6 @@
 GO ?= go
+# Overridden on the command line; the workflow stamps the tag instead.
+VERSION ?= devel
 CORPUS_DIR ?= testdata/corpus/py-pdf
 
 # Pinned so corpus results are reproducible. Bump deliberately, then
@@ -20,6 +22,22 @@ help:
 .PHONY: build
 build:
 	$(GO) build -o decant ./cmd/decant
+
+# dist builds the release binaries the way the release workflow does, for
+# checking a build locally before cutting a tag. The workflow is what
+# publishes; this is only a rehearsal.
+.PHONY: dist
+dist:
+	@rm -rf dist && mkdir -p dist
+	@for t in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64; do \
+		os=$${t%/*}; arch=$${t#*/}; ext=""; [ "$$os" = windows ] && ext=".exe"; \
+		out=dist/decant-$(VERSION)-$$os-$$arch$$ext; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch $(GO) build -trimpath \
+			-ldflags="-s -w -X main.version=$(VERSION)" -o $$out ./cmd/decant || exit 1; \
+		echo "  $$out"; \
+	done
+	@cd dist && shasum -a 256 * > SHA256SUMS
+	@echo "dist/ built at $(VERSION); the release workflow publishes on tag push"
 
 .PHONY: test
 test:

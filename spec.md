@@ -126,7 +126,7 @@ If parallelism is revisited, image processing is the target rather than pages. E
 
 ### 4.1 Parse
 
-Read xref, resolve object streams, handle both classic and cross-reference stream layouts. On damaged xref, rebuild by scanning the file for `N M obj` markers.
+Read xref, resolve object streams, handle both classic and cross-reference stream layouts. On damaged xref, rebuild by scanning the file for `N M obj` markers. Detect encryption from the trailer `/Encrypt` dictionary and exit 3 immediately, naming the security handler in the diagnostic. Extract the outline tree, page tree, `/Info` dictionary, and XMP metadata.
 
 **Implementation notes (M6).** The rebuild runs only after a normal read fails, appends a fresh classic table and trailer to the original bytes so every object keeps its offset, and reopens. `Document.Repaired` records that it happened and the report warns, because a rebuilt index is inferred from the bytes rather than declared by the file.
 
@@ -135,7 +135,7 @@ Read xref, resolve object streams, handle both classic and cross-reference strea
 - pdfcpu already recovers from a missing table, a missing trailer, and a `startxref` pointing nowhere. What it does not recover from, and what this handles, is a subsection header declaring the wrong object range so that every entry indexes the wrong object.
 - The pass reads the whole file, which the streaming path avoids, so it declines above 256 MB rather than breach §9's budget.
 
-**`017-unreadable-meta-data` is not fixed by this, and cannot be.** Its cross-reference table is genuinely broken in the way above, and the rebuild repairs that much, but objects 79 through 174 are absent from the file altogether — including object 172, the page tree root the catalog names. Three independent tools agree: `pdftotext` extracts nothing, `pdfinfo` reports "xref num 174 not found but needed", and pypdf rebuilds the table itself and then fails with "Object 172 0 not defined". No index repair recovers missing bytes. The file stays `malformed`, which is the correct outcome. Detect encryption from the trailer `/Encrypt` dictionary and exit 3 immediately, naming the security handler in the diagnostic. Extract the outline tree, page tree, `/Info` dictionary, and XMP metadata.
+**`017-unreadable-meta-data` is not fixed by this, and cannot be.** Its cross-reference table is genuinely broken in the way above, and the rebuild repairs that much, but objects 79 through 174 are absent from the file altogether — including object 172, the page tree root the catalog names. Three independent tools agree: `pdftotext` extracts nothing, `pdfinfo` reports "xref num 174 not found but needed", and pypdf rebuilds the table itself and then fails with "Object 172 0 not defined". No index repair recovers missing bytes. The file stays `malformed`, which is the correct outcome.
 
 ### 4.2 Glyph extraction
 

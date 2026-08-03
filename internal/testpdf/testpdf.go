@@ -35,6 +35,14 @@ type page struct {
 	width, height float64
 	rotate        int
 	content       string
+	links         []link
+}
+
+// link is a /Link annotation with an explicit destination.
+type link struct {
+	x0, y0, x1, y1 float64
+	targetPage     int
+	targetY        float64
 }
 
 type bookmark struct {
@@ -387,6 +395,21 @@ func (b *Builder) Build() []byte {
 		if p.rotate != 0 {
 			body += fmt.Sprintf(" /Rotate %d", p.rotate)
 		}
+		if len(p.links) > 0 {
+			var annots strings.Builder
+			annots.WriteString(" /Annots [")
+			for _, l := range p.links {
+				// An explicit destination: [pageRef /XYZ left top zoom].
+				fmt.Fprintf(&annots,
+					"<< /Type /Annot /Subtype /Link /Border [0 0 0] "+
+						"/Rect [%g %g %g %g] "+
+						"/A << /S /GoTo /D [%d 0 R /XYZ 0 %g null] >> >> ",
+					l.x0, l.y0, l.x1, l.y1,
+					firstPageNr+l.targetPage, l.targetY)
+			}
+			annots.WriteString("]")
+			body += annots.String()
+		}
 		body += " >>"
 		obj(firstPageNr+i, body)
 	}
@@ -643,4 +666,22 @@ func spansBoundary(row []TableCell, i int) bool {
 		col += span
 	}
 	return false
+}
+
+// AddLink attaches a /Link annotation to the most recently added page,
+// pointing at a position on another page.
+//
+// The rectangle is in PDF user space, as a real annotation is. Destinations
+// are explicit rather than named, which keeps the fixture independent of the
+// name-tree walk that Document.namedDest covers separately.
+func (b *Builder) AddLink(x0, y0, x1, y1 float64, targetPage int, targetY float64) *Builder {
+	if len(b.pages) == 0 {
+		return b
+	}
+	p := &b.pages[len(b.pages)-1]
+	p.links = append(p.links, link{
+		x0: x0, y0: y0, x1: x1, y1: y1,
+		targetPage: targetPage, targetY: targetY,
+	})
+	return b
 }

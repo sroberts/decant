@@ -231,26 +231,36 @@ func sortLines(lines []Line) {
 }
 
 // buildLine assembles one line's text and metrics from its glyphs.
-func buildLine(cfg Config, gs []pdf.Glyph, fonts []*pdf.Font) (Line, bool) {
-	if len(gs) == 0 {
-		return Line{}, false
-	}
-	sort.SliceStable(gs, func(a, b int) bool { return gs[a].X < gs[b].X })
+// offsetSentinel stands in for the rest of the line while remapping a prefix
+// offset. It must be a rune normalizeText never merges, splits, or trims: a
+// control character is none of a space, a ligature, or a combining mark.
+const offsetSentinel = "\x01"
 
-	l := Line{Glyphs: gs}
-	// Size and baseline are needed during the glyph walk below, since
-	// superscript detection measures against them.
-	l.Size = medianGlyphSize(gs)
-	l.Baseline = medianBaseline(gs)
-	l.Rotation = gs[0].Rotation
-	l.Font = dominantFont(gs, fonts)
-
-	// The advance-weighted median gap fallback for space detection, used when
-	// the font declares no space glyph.
-	medAdvance := medianAdvance(gs)
-
+// writeGlyphs assembles a line's text from its glyphs.
+//
+// It is the single implementation of spec section 4.3's space rule and
+// section 4.6's superscript bracketing, shared by line assembly and by link
+// mapping so the two cannot drift apart.
+//
+// When wantOffsets is set it also returns, for each glyph, the byte offset at
+// which that glyph's rune begins in the *normalized* text. Establishing that
+// costs a normalization per glyph, because normalizeText expands ligatures,
+// applies NFC, and collapses space runs, any of which moves the bytes after
+// it. Line assembly therefore does not ask for offsets; only the handful of
+// lines that actually carry a link annotation pay for them.
+func writeGlyphs(
+	cfg Config,
+	gs []pdf.Glyph,
+	fonts []*pdf.Font,
+	baseline, size, medAdvance float64,
+	wantOffsets bool,
+) (raw string, offsets []int, hasSuper bool) {
 	var sb strings.Builder
 	sb.Grow(len(gs) + 8)
+
+	if wantOffsets {
+		offsets = make([]int, len(gs))
+	}
 
 	// inSuper tracks an open superscript run so consecutive raised glyphs
 	// share one bracket pair rather than each getting their own.
@@ -272,17 +282,61 @@ func buildLine(cfg Config, gs []pdf.Glyph, fonts []*pdf.Font) (Line, bool) {
 			}
 		}
 
-		super := isSuperscript(cfg, g, l.Baseline, l.Size)
+		super := isSuperscript(cfg, g, baseline, size)
 		switch {
 		case super && !inSuper:
 			sb.WriteString(SuperscriptOpen)
 			inSuper = true
-			l.HasSuperscript = true
+			hasSuper = true
 		case !super && inSuper:
 			closeSuper()
 		}
+		if wantOffsets {
+			offsets[i] = sb.Len()
+		}
 		sb.WriteRune(g.Rune)
+	}
+	closeSuper()
 
+	raw = sb.String()
+	if wantOffsets {
+		// Remap raw offsets onto the normalized string. Normalizing each
+		// prefix is the only way to do this that cannot disagree with
+		// normalizeText itself.
+		//
+		// The prefix carries a sentinel because normalizeText collapses
+		// space runs and trims the right edge: without it, the prefix for a
+		// glyph that follows a gap loses the space the full string keeps,
+		// and every offset after a wide inter-glyph gap comes out short.
+		for i, off := range offsets {
+			offsets[i] = len(normalizeText(raw[:off]+offsetSentinel)) - len(offsetSentinel)
+		}
+	}
+	return raw, offsets, hasSuper
+}
+
+func buildLine(cfg Config, gs []pdf.Glyph, fonts []*pdf.Font) (Line, bool) {
+	if len(gs) == 0 {
+		return Line{}, false
+	}
+	sort.SliceStable(gs, func(a, b int) bool { return gs[a].X < gs[b].X })
+
+	l := Line{Glyphs: gs}
+	// Size and baseline are needed during the glyph walk below, since
+	// superscript detection measures against them.
+	l.Size = medianGlyphSize(gs)
+	l.Baseline = medianBaseline(gs)
+	l.Rotation = gs[0].Rotation
+	l.Font = dominantFont(gs, fonts)
+
+	// The advance-weighted median gap fallback for space detection, used when
+	// the font declares no space glyph.
+	medAdvance := medianAdvance(gs)
+
+	raw, _, hasSuper := writeGlyphs(cfg, gs, fonts, l.Baseline, l.Size, medAdvance, false)
+	l.HasSuperscript = hasSuper
+
+	for _, g := range gs {
 		// Advance box, used for the line bounds.
 		x0, x1 := g.X, g.X+g.Advance
 		if x1 < x0 {
@@ -295,9 +349,7 @@ func buildLine(cfg Config, gs []pdf.Glyph, fonts []*pdf.Font) (Line, bool) {
 		l.Bounds = l.Bounds.Union(pdf.Rect{MinX: x0, MinY: top, MaxX: x1, MaxY: bot})
 	}
 
-	closeSuper()
-
-	l.Text = normalizeText(sb.String())
+	l.Text = normalizeText(raw)
 	if strings.TrimSpace(StripSuperscriptMarks(l.Text)) == "" {
 		return Line{}, false
 	}

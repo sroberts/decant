@@ -149,6 +149,11 @@ func TestEPUBCheckValidation(t *testing.T) {
 			pdf: epubcheckTableDoc,
 		},
 		{
+			name: "cross-references",
+			opts: defaultOpts,
+			pdf:  linkDoc,
+		},
+		{
 			name: "table-crosspoint",
 			opts: func() decant.Options {
 				o := defaultOpts()

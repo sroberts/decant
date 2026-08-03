@@ -225,6 +225,15 @@ Residual over-firing is real and documented rather than tuned away: on the corpu
 
 Chapter files split at `--split-at` boundaries and again at `--max-chunk-bytes`, always at a paragraph boundary, with `-2`, `-3` suffixes. Internal cross-references (PDF `/Link` annotations targeting page destinations) rewrite to `href` fragments against generated anchor IDs. Anchor IDs derive from a content hash, not a counter, so they stay stable across runs.
 
+**Implementation notes (M6).**
+
+- Named destinations are resolved by walking the catalog's `/Names /Dests` name tree directly. pdfcpu's `DereferenceDestArray` reads a map only its validation pass populates, and decant reads with `ValidationRelaxed`, so every named destination failed. The same resolver serves outline reconciliation in §4.6, which was silently dead on documents using named destinations — most TeX output.
+- A link is matched to text glyph by glyph, on whether a glyph's center falls inside the annotation rectangle. Matching on line bounds instead would link a whole line for a reference that covers three words of it. Annotation rectangles are drawn generously and clip a neighbouring glyph's edge often enough that an overlap test pulls it in, which is why the test point is the center.
+- Only blocks something points at carry an `id`. Anchoring every paragraph would inflate every file against the `crosspoint` chunk budget in §5 for no benefit.
+- A cross-reference whose destination resolves to no block renders as plain text and is counted in the report. It is an info rather than a warning: a link into a page outside `--pages`, or into one that was dropped, is a normal consequence of options the caller chose.
+- Overlapping spans are resolved rather than emitted, and a superscript noteref inside a linked range emits as a plain `<sup>`, because nested anchors are invalid XHTML.
+- Only `/Rect` is read, not `/QuadPoints`, so a single annotation genuinely spanning two lines over-links to its bounding box. Producers usually emit one annotation per line instead.
+
 **EPUB structure:**
 
 ```

@@ -185,6 +185,8 @@ model at any stage.
 - Dehyphenation by inverted Liang pattern matching in eight languages
 - Ordered and unordered lists with inferred start, blockquotes, code blocks
 - Table detection from ruling lines and column alignment, with colspan
+- Internal cross-references rewritten from PDF `/Link` annotations to `href`
+  fragments, anchoring only the blocks something points at
 - Superscript detection and footnotes linked with `epub:type` noteref
 - Deterministic EPUB 3.3 output with an EPUB 2 NCX fallback
 - Encrypted, scanned, and malformed input detection with distinct exit codes

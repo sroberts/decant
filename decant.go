@@ -184,13 +184,18 @@ func (c *Converter) Analyze(ctx context.Context, r io.ReaderAt, size int64) (*Do
 	hist := fontHistogram{}
 	imgs := newImageSet()
 	pageHeights := map[int]float64{}
+	// Converts a destination's user-space y to page space, per source page. A
+	// cross-reference can point at any page, including one processed long
+	// before or after the one it sits on, so the conversion is captured while
+	// the page is loaded and applied once every page has been seen.
+	pageSpaceY := map[int]func(float64) float64{}
 
 	for _, idx := range pages {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
 		c.analyzePage(cfg, src, idx, cache, doc, &feats, hist, entries,
-			entriesByPage[idx], imgs, pageHeights, rep)
+			entriesByPage[idx], imgs, pageHeights, pageSpaceY, rep)
 	}
 	doc.Images = imgs.sorted()
 
@@ -214,6 +219,7 @@ func (c *Converter) Analyze(ctx context.Context, r io.ReaderAt, size int64) (*Do
 	// the footnote block's anchor.
 	assignBlockIDs(doc.Blocks)
 	c.linkFootnotes(doc.Blocks, rep)
+	resolveCrossRefs(doc.Blocks, pageSpaceY, rep)
 
 	for _, b := range doc.Blocks {
 		rep.Blocks[b.Kind]++
@@ -251,6 +257,7 @@ func (c *Converter) analyzePage(
 	entryIdx []int,
 	imgs *imageSet,
 	pageHeights map[int]float64,
+	pageSpaceY map[int]func(float64) float64,
 	rep *Report,
 ) {
 	m := PageMetrics{Page: idx}
@@ -263,6 +270,10 @@ func (c *Converter) analyzePage(
 	}
 
 	pageHeights[idx] = page.Height
+	pageSpaceY[idx] = func(y float64) float64 {
+		_, py := page.ToPageSpace(0, y)
+		return py
+	}
 
 	// Convert this page's outline destinations while its geometry is loaded.
 	for _, ei := range entryIdx {
@@ -272,6 +283,9 @@ func (c *Converter) analyzePage(
 		_, y := page.ToPageSpace(0, entries[ei].userY)
 		entries[ei].pageY = y
 	}
+
+	// Internal link annotations, in page space. Spec 4.9.
+	pageLinks := src.Links(page)
 
 	pc, ok := cache[idx]
 	if !ok {
@@ -412,6 +426,31 @@ func (c *Converter) analyzePage(
 
 			supers := layout.SuperscriptLabels(text)
 
+			// Cross-references. Spans are offsets into p.Text, which is
+			// trimmed again on the way into the block, so the leading trim
+			// comes off here.
+			var refs []CrossRef
+			if len(pageLinks) > 0 {
+				lead := len(p.Text) - len(strings.TrimLeft(p.Text, " \t"))
+				for _, sp := range layout.MapLinks(cfg, &p, pc.Fonts, pageLinks) {
+					start, end := sp.Start-lead, sp.End-lead
+					if start < 0 {
+						start = 0
+					}
+					if end > len(text) {
+						end = len(text)
+					}
+					if start >= end {
+						continue
+					}
+					refs = append(refs, CrossRef{
+						Start: start, End: end,
+						TargetPage: sp.TargetPage,
+						TargetY:    sp.TargetY,
+					})
+				}
+			}
+
 			bf := blockFeatures{
 				size:       p.Size,
 				family:     family,
@@ -441,6 +480,7 @@ func (c *Converter) analyzePage(
 					// page has contributed to the font histogram.
 					Kind:         KindParagraph,
 					Text:         text,
+					Links:        refs,
 					Superscripts: supers,
 					Page:         idx,
 					Bounds:       toRect(p.Bounds),

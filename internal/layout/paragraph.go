@@ -19,6 +19,12 @@ type Paragraph struct {
 	// Font is the dominant font across the paragraph.
 	Font *pdf.Font
 
+	// LineStarts gives, for each entry in Lines, the byte offset in Text at
+	// which that line's contribution begins, or -1 when the line contributed
+	// nothing. Link mapping needs it to turn a glyph offset within a line
+	// into an offset within the paragraph.
+	LineStarts []int
+
 	// HyphensDropped and HyphensKept count the line-break hyphen decisions
 	// made while joining this paragraph's lines.
 	HyphensDropped, HyphensKept int
@@ -245,7 +251,17 @@ func buildParagraph(cfg Config, lines []Line) Paragraph {
 	// dropping a line-break hyphen has to edit the piece already emitted.
 	pieces := make([]string, 0, len(lines))
 
-	for _, l := range lines {
+	// starts tracks where each line's text lands in the concatenation, and
+	// total the concatenation's length so far. Dehyphenation edits the piece
+	// already emitted, so total is corrected when that happens rather than
+	// accumulated blindly.
+	p.LineStarts = make([]int, len(lines))
+	for i := range p.LineStarts {
+		p.LineStarts[i] = -1
+	}
+	total := 0
+
+	for i, l := range lines {
 		text := strings.TrimSpace(l.Text)
 		p.Bounds = p.Bounds.Union(l.Bounds)
 		if text == "" {
@@ -253,20 +269,38 @@ func buildParagraph(cfg Config, lines []Line) Paragraph {
 		}
 		if len(pieces) == 0 {
 			pieces = append(pieces, text)
+			p.LineStarts[i] = 0
+			total = len(text)
 			continue
 		}
 
 		prev := pieces[len(pieces)-1]
 		joined, sep := joinAcrossLineBreak(cfg, prev, text, &p)
+		// A dropped hyphen shortens the previous piece.
+		total -= len(prev) - len(joined)
 		pieces[len(pieces)-1] = joined
 		if sep != "" {
 			pieces = append(pieces, sep+text)
+			p.LineStarts[i] = total + len(sep)
+			total += len(sep) + len(text)
 		} else {
 			pieces[len(pieces)-1] += text
+			p.LineStarts[i] = total
+			total += len(text)
 		}
 	}
 
-	p.Text = strings.TrimSpace(strings.Join(pieces, ""))
+	joinedText := strings.Join(pieces, "")
+	p.Text = strings.TrimSpace(joinedText)
+	// The first piece is already trimmed, so a leading trim should be a
+	// no-op; shift anyway rather than assume it.
+	if lead := len(joinedText) - len(strings.TrimLeft(joinedText, " \t")); lead > 0 {
+		for i := range p.LineStarts {
+			if p.LineStarts[i] >= 0 {
+				p.LineStarts[i] -= lead
+			}
+		}
+	}
 
 	sizes := make([]float64, 0, len(lines))
 	for _, l := range lines {

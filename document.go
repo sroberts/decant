@@ -38,6 +38,27 @@ const (
 // serialization; the CrossPoint TUI uses that to let a reader fix heading
 // levels. Mutating Kind, Level, or Text is supported. Page and Bounds are
 // provenance and should be left alone.
+// CrossRef is one internal cross-reference: a range of a block's text that
+// links to somewhere else in the document.
+//
+// Spec section 4.9 rewrites PDF /Link annotations into these. A caller may
+// edit the range or clear TargetID to suppress the link, the same way it may
+// edit any other field of the block tree.
+type CrossRef struct {
+	// Start and End are byte offsets into the owning block's Text, half-open.
+	Start, End int
+
+	// TargetPage is the zero-based destination page and TargetY its vertical
+	// position in page space, or NaN when the destination names none.
+	TargetPage int
+	TargetY    float64
+
+	// TargetID is the ID of the block the destination resolved to. Empty
+	// means the destination pointed somewhere with no block, in which case
+	// the range renders as plain text and the report records it.
+	TargetID string
+}
+
 type Block struct {
 	Kind BlockKind
 	// Level is the heading rank 1 through 6, and 0 for non-headings.
@@ -77,6 +98,10 @@ type Block struct {
 	// ListStart is the first item's number, inferred from its marker. Zero
 	// means the list starts at one.
 	ListStart int
+
+	// Links are internal cross-references originating in this block, as
+	// character ranges of Text. Spec section 4.9.
+	Links []CrossRef
 
 	// Superscripts are the superscript run labels found in Text, in order.
 	Superscripts []string

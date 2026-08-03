@@ -239,13 +239,11 @@ type Config struct {
 type TableMode string
 
 const (
-	// TableAuto picks by confidence: a real table at high, a rasterized
-	// region at medium, space-preserved text at low.
+	// TableAuto picks by confidence: a real table at high, space-preserved
+	// text otherwise.
 	TableAuto TableMode = "auto"
 	// TableHTML always emits a table.
 	TableHTML TableMode = "html"
-	// TableImage rasterizes the region.
-	TableImage TableMode = "image"
 	// TableText emits space-preserved text.
 	TableText TableMode = "text"
 	// TableDrop discards detected tables.

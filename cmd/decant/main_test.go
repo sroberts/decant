@@ -302,21 +302,54 @@ func TestSourceDateEpochIsHonored(t *testing.T) {
 	}
 }
 
-func TestUnimplementedFlagsWarn(t *testing.T) {
-	// --table-mode itself is implemented as of M5, so it is no longer the
-	// example here. What remains unimplemented is the "image" mode: spec
-	// section 13 keeps the vector renderer open, so a table that would be
-	// rasterized is emitted as text instead. Principle 3 requires saying so
-	// rather than silently substituting.
+func TestReservedFlagsWarn(t *testing.T) {
+	// A flag accepted but not acted on has to say so; principle 3 rules out
+	// silently ignoring it.
+	//
+	// This test has now outlived two subjects. It first asserted that
+	// --table-mode printed a notice, which stopped being true when M5
+	// implemented it. It then moved to --table-mode=image, which stopped
+	// being true when that mode was removed rather than frozen into the v1
+	// API as a permanent no-op. --jobs is the remaining case, and unlike the
+	// other two it is reserved deliberately rather than pending work.
+	in := writeFixture(t)
+	out := filepath.Join(t.TempDir(), "out.epub")
+
+	code, _, stderr := runCLI("convert", in, "-o", out, "--jobs", "8")
+	if code != exitOK {
+		t.Fatalf("exit code = %d\nstderr:\n%s", code, stderr)
+	}
+	if !strings.Contains(stderr, "--jobs is reserved") {
+		t.Errorf("no notice that --jobs does nothing:\n%s", stderr)
+	}
+}
+
+func TestReservedFlagIsQuietUnlessPassed(t *testing.T) {
+	// The notice is about the caller's choice, so it must not fire on the
+	// default. Otherwise every conversion carries it.
+	in := writeFixture(t)
+	out := filepath.Join(t.TempDir(), "out.epub")
+
+	code, _, stderr := runCLI("convert", in, "-o", out)
+	if code != exitOK {
+		t.Fatalf("exit code = %d\nstderr:\n%s", code, stderr)
+	}
+	if strings.Contains(stderr, "--jobs is reserved") {
+		t.Errorf("the reserved-flag notice fired without the flag:\n%s", stderr)
+	}
+}
+
+func TestRemovedTableModeIsRejected(t *testing.T) {
+	// "image" was a documented mode that never did anything but degrade to
+	// text. It was removed rather than carried into v1, so asking for it is
+	// now a usage error rather than a silent substitution.
 	in := writeTableFixture(t)
 	out := filepath.Join(t.TempDir(), "out.epub")
 
 	code, _, stderr := runCLI("convert", in, "-o", out, "--table-mode", "image")
-	if code != exitOK {
-		t.Fatalf("exit code = %d\nstderr:\n%s", code, stderr)
-	}
-	if !strings.Contains(stderr, "table rasterization") {
-		t.Errorf("no notice that image mode degraded to text:\n%s", stderr)
+	if code != exitUsage {
+		t.Errorf("exit code = %d, want %d for a removed mode\nstderr:\n%s",
+			code, exitUsage, stderr)
 	}
 }
 

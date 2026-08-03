@@ -480,12 +480,6 @@ const (
 	TableAuto TableMode = "auto"
 	// TableHTML always emits a table element.
 	TableHTML TableMode = "html"
-	// TableImage rasterizes the table's region.
-	//
-	// Rasterizing needs the vector renderer spec section 13 keeps open, so
-	// this currently falls back to TableText and records a diagnostic rather
-	// than silently emitting something else.
-	TableImage TableMode = "image"
 	// TableText emits space-preserved text inside a pre element.
 	TableText TableMode = "text"
 	// TableDrop discards detected tables, leaving their text as paragraphs.
@@ -495,7 +489,7 @@ const (
 // Valid reports whether m is a known table mode.
 func (m TableMode) Valid() bool {
 	switch m {
-	case TableAuto, TableHTML, TableImage, TableText, TableDrop:
+	case TableAuto, TableHTML, TableText, TableDrop:
 		return true
 	}
 	return false
@@ -638,7 +632,7 @@ func (o *Options) validate() error {
 		return fmt.Errorf("unknown split mode %q (want h1, h2, page, or none)", o.SplitAt)
 	}
 	if !o.Tables.Valid() {
-		return fmt.Errorf("unknown table mode %q (want auto, html, image, text, or drop)", o.Tables)
+		return fmt.Errorf("unknown table mode %q (want auto, html, text, or drop)", o.Tables)
 	}
 	if !o.Images.Valid() {
 		return fmt.Errorf("unknown image mode %q (want keep, grayscale, or drop)", o.Images)

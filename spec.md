@@ -27,6 +27,12 @@ Primary technical risk: no permissively licensed pure-Go library extracts text w
 - Vector graphics conversion to SVG. Vector regions rasterize or drop.
 - Editing or authoring EPUB
 - Right-to-left and vertical CJK layout beyond basic text extraction. Detect and warn.
+
+    **Implemented (M6).** Both are extraction successes and layout failures: the runes come through, but decant emits them in logical order with no bidirectional reordering and no vertical setting, so the reader sees something the source did not show. Silence would present that as a faithful conversion, which principle 3 rules out.
+
+    Direction is decided per letter against an explicit table of right-to-left Unicode blocks, and the warning fires on a document-wide ratio (`Heuristics.RTLLetterRatio`, default 0.2) rather than on any occurrence: a Latin book quoting a line of Hebrew is not a bidirectional document, and warning on it would train the reader to ignore the warning that matters. Only letters count, since digits, punctuation and spaces take their direction from context and would dilute the ratio on exactly the pages this exists to catch. Vertical mode comes from the font's encoding CMap, which the font machinery already resolves.
+
+    The report carries `rtl_letter_ratio` and `vertical_text_pages`. On the sample corpus the warning fires on the three Arabic documents at 0.70 and on nothing else.
 - Encrypted PDFs. Detect `/Encrypt` and exit 3. Decryption is cheap to add later behind a `--password` flag, so keep the detection path clean rather than stubbing the handler.
 
 ### Repository layout

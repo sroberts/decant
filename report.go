@@ -77,6 +77,13 @@ type PageMetrics struct {
 	VectorPaints int `json:"vector_paints,omitempty"`
 	// RotatedDropped counts rotated runs discarded.
 	RotatedDropped int `json:"rotated_dropped"`
+	// Letters and RTLLetters count the page's letters and how many of them
+	// belong to a right-to-left script. Spec section 1 puts bidirectional
+	// layout out of scope and asks for it to be detected.
+	Letters    int `json:"letters,omitempty"`
+	RTLLetters int `json:"rtl_letters,omitempty"`
+	// VerticalText marks a page using a font with a vertical writing mode.
+	VerticalText bool `json:"vertical_text,omitempty"`
 	// UsedInvisibleText marks a page whose only text was a mode-3 layer,
 	// which is the searchable-scan case.
 	UsedInvisibleText bool `json:"used_invisible_text"`
@@ -121,6 +128,12 @@ type Report struct {
 	// Tables counts detected tables by confidence, which is what
 	// --table-mode=auto keys on.
 	Tables map[string]int `json:"tables,omitempty"`
+	// RTLLetterRatio is the fraction of the document's letters belonging to a
+	// right-to-left script, and VerticalTextPages counts pages using a
+	// vertical writing mode. Spec section 1 puts both out of scope beyond
+	// basic text extraction.
+	RTLLetterRatio    float64 `json:"rtl_letter_ratio,omitempty"`
+	VerticalTextPages int     `json:"vertical_text_pages,omitempty"`
 	// FurnitureRemoved counts blocks dropped as running heads or folios.
 	FurnitureRemoved int `json:"furniture_removed"`
 	// VectorPagesDropped counts pages carrying vector artwork that decant did

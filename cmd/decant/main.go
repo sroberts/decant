@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"runtime/debug"
 	"strings"
 
 	"github.com/sroberts/decant"
@@ -29,8 +30,51 @@ const (
 	exitMalformed   = 6
 )
 
-// version is set by the linker at release time.
-var version = "dev"
+// version is set by the linker at release time. It is empty otherwise, so
+// buildVersion can fall back to what the toolchain recorded.
+var version = ""
+
+// buildVersion reports the binary's version.
+//
+// Three sources, in order. A linker-set value wins, which is how a release
+// build stamps an exact string. Otherwise the module version the toolchain
+// embedded is used, which is what makes "go install ...@v1.0.0" report
+// v1.0.0 rather than a placeholder. A build from a working tree has no module
+// version, so the VCS revision stands in, suffixed when the tree was dirty.
+func buildVersion() string {
+	if version != "" {
+		return version
+	}
+
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "unknown"
+	}
+	if v := bi.Main.Version; v != "" && v != "(devel)" {
+		return v
+	}
+
+	var rev string
+	var dirty bool
+	for _, s := range bi.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			rev = s.Value
+		case "vcs.modified":
+			dirty = s.Value == "true"
+		}
+	}
+	if rev == "" {
+		return "devel"
+	}
+	if len(rev) > 12 {
+		rev = rev[:12]
+	}
+	if dirty {
+		return "devel-" + rev + "-dirty"
+	}
+	return "devel-" + rev
+}
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -54,7 +98,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return exitCode(cmdMeta(ctx, rest, stdout, stderr), stderr)
 	case "version":
 		fmt.Fprintf(stdout, "decant %s (%s %s/%s)\n",
-			version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+			buildVersion(), runtime.Version(), runtime.GOOS, runtime.GOARCH)
 		return exitOK
 	case "-h", "--help", "help":
 		usage(stdout)

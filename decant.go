@@ -161,6 +161,16 @@ func (c *Converter) Analyze(ctx context.Context, r io.ReaderAt, size int64) (*Do
 		return nil, err
 	}
 
+	if src.Repaired {
+		// Spec 4.1 rebuilds an unusable cross-reference table by scanning for
+		// object markers. Principle 3 requires saying so: the rebuilt index
+		// is inferred from the bytes rather than declared by the file, and an
+		// object the scan did not reach is simply absent from the result.
+		rep.warn("parse", -1,
+			"the cross-reference table could not be followed and was rebuilt by "+
+				"scanning for objects; content may be missing")
+	}
+
 	doc.Outline = convertOutline(src.Outline())
 
 	// Flatten the outline and index it by page, so each destination's user

@@ -454,7 +454,7 @@ func renderInline(b Block, lc *linkContext) string {
 	if spans := resolvableRefs(b, lc); len(spans) > 0 {
 		return renderWithCrossRefs(b, lc, spans)
 	}
-	return renderRuns(b, b.Text, true)
+	return renderRuns(b, b.Text, 0, true)
 }
 
 // resolvableRefs returns the block's cross-references that have a target in
@@ -504,19 +504,103 @@ func renderWithCrossRefs(b Block, lc *linkContext, spans []CrossRef) string {
 	var sb strings.Builder
 	pos := 0
 	for _, ref := range spans {
-		sb.WriteString(renderRuns(b, b.Text[pos:ref.Start], true))
+		sb.WriteString(renderRuns(b, b.Text[pos:ref.Start], pos, true))
 		href, _ := lc.href(ref.TargetID)
 		fmt.Fprintf(&sb, `<a href="%s">%s</a>`,
-			epub.EscapeXML(href), renderRuns(b, b.Text[ref.Start:ref.End], false))
+			epub.EscapeXML(href),
+			renderRuns(b, b.Text[ref.Start:ref.End], ref.Start, false))
 		pos = ref.End
 	}
-	sb.WriteString(renderRuns(b, b.Text[pos:], true))
+	sb.WriteString(renderRuns(b, b.Text[pos:], pos, true))
 	return sb.String()
 }
 
-// renderRuns escapes text and turns superscript runs into sup elements,
-// linking them to their footnote when noteRefs is set.
-func renderRuns(b Block, raw string, noteRefs bool) string {
+// renderRuns escapes text, wraps its bold and italic ranges, and turns
+// superscript runs into sup elements, linking them to their footnote when
+// noteRefs is set.
+//
+// base is raw's byte offset within b.Text, which the style ranges are
+// measured against. Style runs are clipped to raw rather than spanning it, so
+// a run that straddles a cross-reference boundary is emitted on each side
+// instead of enclosing the anchor: strong inside a and a inside strong are
+// both valid, but a run crossing the boundary can be neither.
+func renderRuns(b Block, raw string, base int, noteRefs bool) string {
+	styles := clipStyles(b.Styles, base, base+len(raw))
+	if len(styles) == 0 {
+		return renderSupers(b, raw, noteRefs)
+	}
+
+	var sb strings.Builder
+	pos := base
+	for _, st := range styles {
+		sb.WriteString(renderSupers(b, raw[pos-base:st.Start-base], noteRefs))
+		open, close := emphasisTags(st)
+		sb.WriteString(open)
+		sb.WriteString(renderSupers(b, raw[st.Start-base:st.End-base], noteRefs))
+		sb.WriteString(close)
+		pos = st.End
+	}
+	sb.WriteString(renderSupers(b, raw[pos-base:], noteRefs))
+	return sb.String()
+}
+
+// emphasisTags returns the opening and closing markup for a style run.
+//
+// Bold nests outside italic when both apply, so the pairing is consistent
+// across the document and the output stays diffable.
+func emphasisTags(st StyleRun) (string, string) {
+	switch {
+	case st.Bold && st.Italic:
+		return "<strong><em>", "</em></strong>"
+	case st.Bold:
+		return "<strong>", "</strong>"
+	case st.Italic:
+		return "<em>", "</em>"
+	}
+	return "", ""
+}
+
+// clipStyles returns the style runs overlapping [lo, hi), clipped to it and
+// ordered, with overlaps and empty runs dropped.
+//
+// A caller may have edited the block tree between Analyze and Write, so the
+// ranges are treated as untrusted rather than assumed well formed.
+func clipStyles(styles []StyleRun, lo, hi int) []StyleRun {
+	if len(styles) == 0 || hi <= lo {
+		return nil
+	}
+	var out []StyleRun
+	for _, st := range styles {
+		if !st.Bold && !st.Italic {
+			continue
+		}
+		if st.Start < lo {
+			st.Start = lo
+		}
+		if st.End > hi {
+			st.End = hi
+		}
+		if st.Start >= st.End {
+			continue
+		}
+		out = append(out, st)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Start < out[j].Start })
+
+	kept := out[:0]
+	prevEnd := lo
+	for _, st := range out {
+		if st.Start < prevEnd {
+			continue
+		}
+		kept = append(kept, st)
+		prevEnd = st.End
+	}
+	return kept
+}
+
+// renderSupers escapes text and turns superscript runs into sup elements.
+func renderSupers(b Block, raw string, noteRefs bool) string {
 	if !strings.Contains(raw, layout.SuperscriptOpen) {
 		return epub.EscapeXML(raw)
 	}

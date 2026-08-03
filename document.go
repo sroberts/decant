@@ -38,6 +38,18 @@ const (
 // serialization; the CrossPoint TUI uses that to let a reader fix heading
 // levels. Mutating Kind, Level, or Text is supported. Page and Bounds are
 // provenance and should be left alone.
+// StyleRun is a range of a block's text set in bold, italic, or both.
+//
+// A caller may drop or narrow a run the same way it may edit any other field
+// of the block tree; the renderer emits strong and em from these alone.
+type StyleRun struct {
+	// Start and End are byte offsets into the owning block's Text, half-open.
+	Start, End int
+	// Bold and Italic are derived from the font's /FontDescriptor flags and
+	// its family-name suffix, per spec section 4.6.
+	Bold, Italic bool
+}
+
 // CrossRef is one internal cross-reference: a range of a block's text that
 // links to somewhere else in the document.
 //
@@ -98,6 +110,10 @@ type Block struct {
 	// ListStart is the first item's number, inferred from its marker. Zero
 	// means the list starts at one.
 	ListStart int
+
+	// Styles are the bold and italic runs of Text, as character ranges.
+	// Spec section 4.6.
+	Styles []StyleRun
 
 	// Links are internal cross-references originating in this block, as
 	// character ranges of Text. Spec section 4.9.

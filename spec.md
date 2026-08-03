@@ -5,7 +5,7 @@ Status: Draft. Repository `github.com/sroberts/decant`, MIT licensed. Single rep
 
 ## Bottom Line
 
-Build a single static Go binary that reconstructs semantic, reflowable EPUB 3 from fixed-layout PDF. The hard problem is not file format plumbing, it is layout reconstruction: PDF stores positioned glyphs, EPUB needs paragraphs, headings, and reading order. Roughly 70% of the engineering effort lands in three stages (content stream interpretation, block segmentation, structure classification). Ship the conversion engine as an importable package first and the CLI as a thin wrapper, so the CrossPoint library TUI consumes the same code path without shelling out.
+Build a single static Go binary that reconstructs semantic, reflowable EPUB 3 from fixed-layout PDF. The hard problem is not file format plumbing, it is layout reconstruction: PDF stores positioned glyphs, EPUB needs paragraphs, headings, and reading order. Roughly 70% of the engineering effort lands in three stages (content stream interpretation, block segmentation, structure classification). Ship the conversion engine as an importable package first and the CLI as a thin wrapper, so the CrossPoint library TUI consumes the same code path without shelling out. That TUI is a separate application depending on this module; see section 1.
 
 Primary technical risk: no permissively licensed pure-Go library extracts text with reliable positional and font metadata. Expect to write the content stream interpreter, roughly 2,000 to 3,000 lines.
 
@@ -50,7 +50,9 @@ decant/
   testdata/corpus/  golden corpus and structure fingerprints
 ```
 
-Everything below the root package sits under `internal/` so the public surface stays small and the CrossPoint TUI cannot couple to implementation details. Tag `v0.x` through M5 and treat the API as unstable; cut `v1.0.0` at M6 once the TUI has exercised `Analyze` and `Write` against real files.
+Everything below the root package sits under `internal/` so the public surface stays small and a consumer cannot couple to implementation details. Tag `v0.x` through M5 and treat the API as unstable; cut `v1.0.0` at M6 once the public API is documented and pinned by contract tests.
+
+The CrossPoint TUI is a **separate application** that depends on this module rather than a deliverable of it (revised 2026-08-03). It was originally to be built alongside decant and to gate `v1.0.0` by exercising `Analyze` and `Write`; treating it as a consumer instead is what the library-first principle implies, and it removes a gate this repository cannot close on its own.
 
 ## 2. Design Principles
 
@@ -204,7 +206,11 @@ Implementation notes:
 
 Record every decision, with the pattern score, in the report.
 
-**Inline runs**: derive bold and italic from `/FontDescriptor` flags plus family-name suffix matching, emit `<strong>` and `<em>`. Detect superscript from positive `Ts` rise or a baseline offset above 20% em combined with reduced size; emit `<sup>`. Link superscript markers to matching footnote blocks using `epub:type="noteref"` and `epub:type="footnote"`, which renders as a popup note on conforming readers.
+**Inline runs**: derive bold and italic from `/FontDescriptor` flags plus family-name suffix matching, emit `<strong>` and `<em>`.
+
+Two guards, neither in this section, both against its rule misfiring on the documents decant is aimed at. A TeX math family sets italic on every variable it draws, which is a typesetting convention rather than emphasis; honouring it wrapped 6,947 single letters on the corpus's mathematics textbook, so math families are excluded by name. And a run shorter than `StyleMinLetters` (default 2) is dropped, since a single italic letter mid-sentence is a variable or a symbol. A run covering a whole block is also dropped: emphasis is a contrast with its surroundings, and a heading set in bold is already marked up structurally. After both, the same textbook emits 24 runs, all of them German terms being introduced.
+
+Runs are carried on `Block.Styles` as character ranges, so a caller can narrow or drop one before `Write`. Where a run straddles a cross-reference boundary it is emitted on each side rather than enclosing the anchor, since `strong` inside `a` and `a` inside `strong` are both valid but a run crossing the boundary can be neither. Detect superscript from positive `Ts` rise or a baseline offset above 20% em combined with reduced size; emit `<sup>`. Link superscript markers to matching footnote blocks using `epub:type="noteref"` and `epub:type="footnote"`, which renders as a popup note on conforming readers.
 
 ### 4.7 Images
 
@@ -457,7 +463,7 @@ Comparison normalizes what carries no meaning: case, edge punctuation, private-u
 3. **M3**: Image extraction, placement, re-encoding, figure and caption handling.
 4. **M4**: Furniture removal, dehyphenation, footnote linking, list and blockquote detection.
 5. **M5**: Table detection, device profiles, conversion report, `probe` subcommand.
-6. **M6**: Public library API stabilization and CrossPoint TUI integration.
+6. **M6**: Public library API stabilization: documentation, contract tests, a stated compatibility policy, and the remaining gaps in sections 1, 4.1, 4.6 and 4.9. The CrossPoint TUI consumes this module rather than shipping from it; see section 1.
 
 Ship M1 through M3 before optimizing anything. Layout heuristics need real-corpus feedback, and tuning thresholds against three test files produces overfitted garbage.
 

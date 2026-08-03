@@ -244,6 +244,24 @@ func isTeXTextFont(baseFont string) bool {
 	return false
 }
 
+// isTeXMathFont reports whether a base font name is a TeX math family.
+//
+// Italic in these is a typesetting convention for variables, not emphasis.
+// Spec section 4.6 derives em from the italic flag, and on a mathematics
+// document that flag is set on every variable in every formula.
+func isTeXMathFont(baseFont string) bool {
+	n := strings.ToUpper(stripSubsetPrefix(baseFont))
+	if i := strings.IndexAny(n, "-,"); i > 0 {
+		n = n[:i]
+	}
+	for _, p := range texMathPrefixes {
+		if strings.HasPrefix(n, p) {
+			return true
+		}
+	}
+	return false
+}
+
 // encodingByName resolves a /BaseEncoding or /Encoding name.
 func encodingByName(n string) (*[256]rune, bool) {
 	switch n {

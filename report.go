@@ -173,17 +173,6 @@ func (r *Report) info(stage string, page int, msg string) {
 	})
 }
 
-// warnOnce records a document-level warning only the first time it is seen,
-// so a condition that recurs on every page reports once.
-func (r *Report) warnOnce(stage, msg string) {
-	for _, d := range r.Diagnostics {
-		if d.Stage == stage && d.Message == msg {
-			return
-		}
-	}
-	r.warn(stage, -1, msg)
-}
-
 func (r *Report) warn(stage string, page int, msg string) {
 	r.Diagnostics = append(r.Diagnostics, Diagnostic{
 		Severity: SeverityWarning, Stage: stage, Page: page, Message: msg,

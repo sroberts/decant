@@ -556,28 +556,20 @@ func renderRuns(b Block, raw string, noteRefs bool) string {
 // renderTable emits a table in whichever form --table-mode selects.
 //
 // Spec section 4.8 makes auto depend on confidence: a real table only when
-// both detection signals fired, a rasterized region at medium, and
-// space-preserved text at low. Rasterizing needs the vector renderer that
-// spec section 13 keeps open, so image mode degrades to text and says so
-// rather than silently emitting something the caller did not ask for.
+// both detection signals fired, and space-preserved text otherwise.
+//
+// Section 4.8 originally rasterized the region at medium confidence. That
+// needed the vector renderer section 13 leaves for after v1, so the mode
+// never did anything but degrade to text with a warning, and it was removed
+// rather than frozen into the v1 API as a permanent no-op.
 func (c *Converter) renderTable(sb *strings.Builder, b Block, rep *Report) {
 	mode := c.opts.Tables
 	if mode == TableAuto {
-		switch b.TableConfidence {
-		case string(layout.ConfidenceHigh):
+		if b.TableConfidence == string(layout.ConfidenceHigh) {
 			mode = TableHTML
-		case string(layout.ConfidenceMedium):
-			mode = TableImage
-		default:
+		} else {
 			mode = TableText
 		}
-	}
-	if mode == TableImage {
-		rep.warnOnce("tables",
-			"table rasterization needs the vector renderer that spec section 13 "+
-				"keeps open, so tables that would be rasterized are emitted as "+
-				"space-preserved text instead")
-		mode = TableText
 	}
 
 	switch mode {

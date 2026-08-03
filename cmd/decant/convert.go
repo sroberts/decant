@@ -39,7 +39,7 @@ func cmdConvert(ctx context.Context, args []string, stdout, stderr io.Writer) er
 		columns       = fs.String("columns", "auto", "column count: auto, 1, 2, 3")
 		keepHeaders   = fs.Bool("keep-headers", false, "retain running heads and folios")
 		noDehyphenate = fs.Bool("no-dehyphenate", false, "preserve line-break hyphens verbatim")
-		tableMode     = fs.String("table-mode", "auto", "table handling: auto, html, image, text, drop")
+		tableMode     = fs.String("table-mode", "auto", "table handling: auto, html, text, drop")
 		imageMaxWidth = fs.Int("image-max-width", def.ImageMaxWidth, "longest image edge in pixels; 0 disables scaling")
 		images        = fs.String("images", string(def.Images), "image handling: keep, grayscale, drop")
 		keepSmall     = fs.Bool("keep-small-images", false, "retain images the size rules would drop")

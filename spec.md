@@ -78,7 +78,7 @@ decant version
 | `--columns` | `auto` | `auto`, `1`, `2`, `3` |
 | `--keep-headers` | false | Retain running heads and folios |
 | `--no-dehyphenate` | false | Preserve line-break hyphens verbatim |
-| `--table-mode` | `auto` | `auto`, `html`, `image`, `text`, `drop` |
+| `--table-mode` | `auto` | `auto`, `html`, `text`, `drop` |
 | `--image-max-width` | `1600` | Longest edge in pixels, 0 disables scaling |
 | `--images` | `keep` | `keep`, `grayscale`, `drop` |
 | `--report` | none | Write JSON conversion report to path |
@@ -220,7 +220,9 @@ Two detection signals, both required for `html` output at high confidence:
 1. **Ruling lines**: `re` and `l` path operators with stroke width under 2 pt forming a grid of at least 2 rows by 2 columns
 2. **Alignment**: three or more consecutive lines sharing at least two column boundaries within 2 pt tolerance
 
-Cell text assembles from glyphs bounded by adjacent rulings, or by inferred column boundaries when rulings are absent. Handle `colspan` where a cell's bounding box spans multiple detected boundaries. `--table-mode=auto` emits `<table>` at high confidence, rasterizes the region to PNG at medium confidence, and falls back to space-preserved `<pre>` at low confidence. Constrained profiles default to `text`.
+Cell text assembles from glyphs bounded by adjacent rulings, or by inferred column boundaries when rulings are absent. Handle `colspan` where a cell's bounding box spans multiple detected boundaries. `--table-mode=auto` emits `<table>` at high confidence and space-preserved `<pre>` otherwise. Constrained profiles default to `text`.
+
+The `image` mode this section originally specified, rasterizing the region to PNG at medium confidence, is **removed (M6)**. It depended on the vector renderer §13.1 leaves for after v1, so it never did anything but degrade to text with a warning. Go compatibility would have made the exported `TableImage` constant permanent at `v1.0.0`, and a documented mode that silently does something else is worse than one that does not exist. Asking for it is now a usage error. Reintroducing it alongside a rasterizer is not a breaking change; removing it later would have been. This is the same call made for `Options.Jobs` in §7, for the same reason.
 
 **Implementation notes (M5).** The two signals above accept far too much on real documents, and three guards were added to narrow them. Each is tunable in `Heuristics`.
 

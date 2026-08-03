@@ -194,8 +194,10 @@ model at any stage.
 
 ## Not implemented yet
 
-`--table-mode=image` is accepted but degrades to text with a warning: it
-needs the vector renderer that spec §13 keeps open.
+`--table-mode=image` has been **removed**. It needed the vector renderer that
+spec §13.1 leaves for after v1, so it only ever degraded to text with a
+warning; shipping it would have frozen a mode that silently does something
+else into the v1 API. Asking for it is now a usage error.
 
 `--jobs` is **reserved**: it is accepted, prints a notice, and does nothing.
 Page processing is sequential and stays that way. Stages 1 and 2 run inside

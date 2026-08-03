@@ -295,6 +295,17 @@ M1 through M3 ship before anything gets optimized. Layout heuristics need
 real-corpus feedback; tuning thresholds against three test files produces
 overfitted garbage.
 
+## Releasing
+
+```
+git tag -a v1.2.0 -m "..."   # the message becomes the release notes
+git push origin v1.2.0
+```
+
+The release workflow re-runs the gate, cross-compiles five targets, checks
+the built binary reports the tag, and publishes with checksums.
+`make dist VERSION=v1.2.0` rehearses the build without publishing.
+
 ## Development
 
 ```

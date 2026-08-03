@@ -135,6 +135,14 @@ Ship M1–M3 before optimizing: tuning layout thresholds against three test file
 
 decant ships MIT, so vendored `hyph-utf8` hyphenation patterns must be MIT, BSD, or unrestricted. **Russian and Swedish are deliberately absent** — their files are LPPL-only, and §4.6 says to drop the language rather than complicate the license, even though §4.6's own language list names them. `TestLPPLLanguagesAreNotShipped` guards this; `THIRD_PARTY.md` records the per-file audit. Adding a language means auditing its license first.
 
+## Releasing
+
+`git tag -a vX.Y.Z && git push origin vX.Y.Z`. `.github/workflows/release.yml` does the rest: it re-runs gofmt, vet and the test suite, cross-compiles five targets with `-trimpath` and the tag stamped via `-ldflags -X main.version`, writes `SHA256SUMS`, asserts the built binary reports the tag, and publishes.
+
+**The annotated tag's message is the release notes**, minus its first line, which becomes the title. Write them there rather than in the GitHub UI: the repository then carries them, and there is one place to author them. An unannotated tag fails the workflow rather than publishing empty notes.
+
+The workflow refuses to publish over an existing release. `make dist VERSION=vX.Y.Z` rehearses the build locally without publishing anything.
+
 ## Workflow
 
 GitHub Flow: branch off `main` per milestone or fix, commit, push, open a PR.

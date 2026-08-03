@@ -1,6 +1,7 @@
 package pdf
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -110,6 +111,13 @@ type Document struct {
 	pageCount int
 	info      Info
 	outline   []OutlineItem
+
+	// Repaired reports that the cross-reference table could not be followed
+	// and was rebuilt by scanning for object markers, per spec section 4.1.
+	// The conversion report surfaces it: a rebuilt index is a weaker claim
+	// about the file than one the file declared itself, and an object the
+	// scan missed is simply absent rather than reported.
+	Repaired bool
 }
 
 // recoverMalformed converts a panic into an *ErrMalformed stored through
@@ -148,7 +156,36 @@ func init() {
 
 // Open reads a PDF. It returns *ErrEncrypted for encrypted files and
 // *ErrMalformed when the xref cannot be recovered.
+//
+// A document whose cross-reference table cannot be followed is repaired
+// first, per spec section 4.1: the file is rescanned for object markers and a
+// fresh table appended. Document.Repaired records that it happened so the
+// conversion report can say so, since a rebuilt index is a weaker claim about
+// the file than one it declared itself.
 func Open(r io.ReaderAt, size int64) (doc *Document, err error) {
+	defer recoverMalformed("reading document structure", &err)
+
+	doc, err = open(r, size)
+	var mal *ErrMalformed
+	if err == nil || !errors.As(err, &mal) {
+		return doc, err
+	}
+
+	repaired, rerr := rebuildXref(r, size)
+	if rerr != nil {
+		// Report the original failure; the repair not working is a detail
+		// about the repair, not about the file.
+		return nil, err
+	}
+	doc, rerr = open(bytes.NewReader(repaired), int64(len(repaired)))
+	if rerr != nil {
+		return nil, err
+	}
+	doc.Repaired = true
+	return doc, nil
+}
+
+func open(r io.ReaderAt, size int64) (doc *Document, err error) {
 	defer recoverMalformed("reading document structure", &err)
 
 	rs := io.NewSectionReader(r, 0, size)

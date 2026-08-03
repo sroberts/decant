@@ -227,6 +227,12 @@ func FuzzOpen(f *testing.F) {
 	f.Add([]byte("%PDF-1.7\ntrailer\n<< /Size 1 /Root 1 0 R >>\nstartxref\n0\n%%EOF"))
 	f.Add([]byte("%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"))
 	f.Add([]byte{})
+	// The repair path in spec 4.1 is its own hostile-input surface: it scans
+	// raw bytes for object markers and appends a table built from them.
+	f.Add([]byte("%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n" +
+		"xref\n90 5\ntrailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n60\n%%EOF\n"))
+	f.Add([]byte("%PDF-1.4\r1 0 obj\r<< /Type /Catalog >>\rendobj\r"))
+	f.Add([]byte("9999999999 99999 obj\n0 0 obj\n"))
 
 	f.Fuzz(func(t *testing.T, data []byte) {
 		doc, err := Open(bytes.NewReader(data), int64(len(data)))

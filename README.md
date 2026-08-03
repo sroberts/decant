@@ -142,6 +142,33 @@ release. Pin thresholds through `Heuristics` if you need stability there, and
 watch `testdata/corpus_manifest.json` for how a change moves 34 real
 documents.
 
+## Custom device profiles
+
+The three built-in profiles cover what decant knows about. For a device it
+has never seen, dump the closest one, edit it, and pass the file:
+
+```
+decant profile --dump crosspoint -o kobo.json
+decant convert book.pdf --profile-file kobo.json
+```
+
+Keys under `options` and `heuristics` are the field names from
+`go doc decant.Options` and `go doc decant.Heuristics`, so the API reference
+is the format reference. Anything the file omits keeps its base profile's
+value. Unknown keys are an error rather than a silent no-op.
+
+Precedence runs defaults, then the base profile, then the file, then any
+explicit flag — so a shared profile can be adopted wholesale and still
+overridden one setting at a time.
+
+decant will not fetch a profile over the network. Identical input and flags
+have to produce identical output, and a remote file can change between runs;
+the file is the shareable unit.
+
+**A profile for a device nobody has tested is a guess.** The `crosspoint`
+numbers come from reading that firmware's source. Anything you write for
+other hardware is worth checking on the hardware.
+
 ## Guarantees
 
 **Deterministic output.** Identical input plus identical flags produces

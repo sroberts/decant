@@ -39,6 +39,7 @@ func cmdConvert(ctx context.Context, args []string, stdout, stderr io.Writer) er
 		columns       = fs.String("columns", "auto", "column count: auto, 1, 2, 3")
 		keepHeaders   = fs.Bool("keep-headers", false, "retain running heads and folios")
 		noDehyphenate = fs.Bool("no-dehyphenate", false, "preserve line-break hyphens verbatim")
+		profileFile   = fs.String("profile-file", "", "path to a JSON device profile; see \"decant profile\"")
 		tableMode     = fs.String("table-mode", "auto", "table handling: auto, html, text, drop")
 		imageMaxWidth = fs.Int("image-max-width", def.ImageMaxWidth, "longest image edge in pixels; 0 disables scaling")
 		images        = fs.String("images", string(def.Images), "image handling: keep, grayscale, drop")
@@ -87,8 +88,26 @@ func cmdConvert(ctx context.Context, args []string, stdout, stderr io.Writer) er
 		return &decant.UsageError{Err: err}
 	}
 
+	// A profile document is parsed here and applied inside
+	// applyProfileRespectingFlags, which owns the precedence order.
+	var profileDoc *decant.ProfileDoc
+	if *profileFile != "" {
+		f, err := os.Open(*profileFile)
+		if err != nil {
+			return &decant.UsageError{Err: err}
+		}
+		profileDoc, err = decant.LoadProfileDoc(f)
+		f.Close()
+		if err != nil {
+			return &decant.UsageError{Err: err}
+		}
+	}
+
 	opts := def
 	opts.Profile = decant.Profile(*profile)
+	if profileDoc != nil && !set["profile"] && profileDoc.Base != "" {
+		opts.Profile = profileDoc.Base
+	}
 	opts.SplitAt = decant.SplitMode(*splitAt)
 	opts.Images = decant.ImageMode(*images)
 	opts.MaxChunkBytes = *maxChunk
@@ -118,7 +137,10 @@ func cmdConvert(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	opts.Deterministic = when
 
 	// Apply profile defaults, then restore anything the user set explicitly.
-	applyProfileRespectingFlags(&opts, set, *maxChunk, *imageMaxWidth, decant.ImageMode(*images))
+	if err := applyProfileRespectingFlags(&opts, profileDoc, set,
+		*maxChunk, *imageMaxWidth, decant.ImageMode(*images)); err != nil {
+		return &decant.UsageError{Err: err}
+	}
 
 	conv, err := decant.New(opts)
 	if err != nil {
@@ -301,8 +323,23 @@ func resolveDate(flagValue string) (time.Time, error) {
 // applyProfileRespectingFlags applies the device profile defaults from spec
 // section 5, then restores any value the user set explicitly. An explicit
 // flag always beats a profile default.
-func applyProfileRespectingFlags(opts *decant.Options, set map[string]bool, chunk, imgWidth int, images decant.ImageMode) {
+func applyProfileRespectingFlags(
+	opts *decant.Options,
+	doc *decant.ProfileDoc,
+	set map[string]bool,
+	chunk, imgWidth int,
+	images decant.ImageMode,
+) error {
 	opts.ApplyProfileDefaults()
+
+	// The document layers over the built-in defaults and under the flags, so
+	// a shared profile can be adopted wholesale and still overridden one
+	// setting at a time from the command line.
+	if doc != nil {
+		if err := opts.ApplyProfileDoc(doc); err != nil {
+			return err
+		}
+	}
 
 	if set["max-chunk-bytes"] {
 		opts.MaxChunkBytes = chunk
@@ -313,6 +350,7 @@ func applyProfileRespectingFlags(opts *decant.Options, set map[string]bool, chun
 	if set["images"] {
 		opts.Images = images
 	}
+	return nil
 }
 
 // parseColumns converts the --columns flag to the option value, where zero

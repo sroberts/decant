@@ -79,6 +79,7 @@ decant version
 |---|---|---|
 | `-o, --output` | input basename + `.epub` | Output path; `-` writes to stdout |
 | `--profile` | `standard` | `standard`, `crosspoint`, `minimal` |
+| `--profile-file` | none | Path to a JSON device profile; see §5 |
 | `--title`, `--author`, `--language` | from PDF metadata | Override Dublin Core metadata |
 | `--pages` | all | Page range, e.g. `5-200,210` |
 | `--split-at` | `h1` | Chapter boundary: `h1`, `h2`, `page`, `none` |
@@ -297,6 +298,21 @@ CSS stays under 50 lines: relative `em` sizing, no fixed widths, no embedded fon
 | TOC depth | unlimited | 2 | 2 |
 | CSS | base | base minus decorative rules | none |
 | NCX fallback | yes | yes | yes |
+
+**Custom profiles (M6).** The three above stay compiled in, because their values encode findings this repository is responsible for: §5.1's numbers come from reading CrossPoint's firmware. A device decant has never seen is served by a **profile document** instead, so adapting it needs no rebuild.
+
+```
+decant profile --dump crosspoint -o kobo.json     # edit, then
+decant convert book.pdf --profile-file kobo.json
+```
+
+The document is JSON. Keys under `options` and `heuristics` are the field names of `Options` and `Heuristics`, matched without regard to case, so the field documentation is the format documentation. A field the document omits keeps the value its `base` profile gave it, so a document states only what it changes.
+
+Precedence is defaults, then the named base, then the document, then an explicit flag — the same rule §3 already states for the built-in profiles, extended by one step.
+
+Two things are rejected rather than accepted quietly. An unknown key is an error, because a misspelled threshold would otherwise look like a threshold that did nothing. And a per-conversion setting is an error even though it is a real field: metadata, a page range, or an output path in a file shared between libraries would be applied silently to every book converted with it.
+
+**Deliberately not supported: fetching a profile over the network.** Principle 4 promises byte-identical output for identical input and flags, and a remote document can change between runs. The file is the shareable unit; fetch it once and pass the path.
 
 ### 5.1 Target hardware: Xteink X4
 

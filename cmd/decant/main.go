@@ -96,6 +96,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return exitCode(cmdProbe(ctx, rest, stdout, stderr), stderr)
 	case "meta":
 		return exitCode(cmdMeta(ctx, rest, stdout, stderr), stderr)
+	case "profile":
+		return exitCode(cmdProfile(rest, stdout, stderr), stderr)
 	case "version":
 		fmt.Fprintf(stdout, "decant %s (%s %s/%s)\n",
 			buildVersion(), runtime.Version(), runtime.GOOS, runtime.GOARCH)

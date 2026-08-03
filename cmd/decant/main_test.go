@@ -384,3 +384,65 @@ func TestStdoutOutput(t *testing.T) {
 		t.Fatalf("exit code = %d\nstderr:\n%s", code, stderr)
 	}
 }
+
+func TestProfileDumpRoundTripsThroughConvert(t *testing.T) {
+	// The dump is the documented way to start a profile for a new device, so
+	// it has to be loadable by convert without editing.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "p.json")
+
+	code, _, stderr := runCLI("profile", "--dump", "crosspoint", "-o", path)
+	if code != exitOK {
+		t.Fatalf("profile --dump exited %d\n%s", code, stderr)
+	}
+
+	in := writeFixture(t)
+	out := filepath.Join(dir, "out.epub")
+	if code, _, stderr := runCLI("convert", in, "-o", out,
+		"--profile-file", path, "--quiet"); code != exitOK {
+		t.Fatalf("convert with the dumped profile exited %d\n%s", code, stderr)
+	}
+}
+
+func TestProfileFileRejectsBadDocument(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "p.json")
+	if err := os.WriteFile(path, []byte(`{"name":"x","nope":1}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	in := writeFixture(t)
+	code, _, stderr := runCLI("convert", in, "-o", filepath.Join(dir, "o.epub"),
+		"--profile-file", path)
+	if code != exitUsage {
+		t.Errorf("exit code = %d, want %d for a bad profile\n%s", code, exitUsage, stderr)
+	}
+}
+
+func TestProfileFileMissingIsUsageError(t *testing.T) {
+	in := writeFixture(t)
+	code, _, _ := runCLI("convert", in, "-o", filepath.Join(t.TempDir(), "o.epub"),
+		"--profile-file", filepath.Join(t.TempDir(), "absent.json"))
+	if code != exitUsage {
+		t.Errorf("exit code = %d, want %d for a missing profile", code, exitUsage)
+	}
+}
+
+func TestExplicitFlagBeatsProfileFile(t *testing.T) {
+	// A shared profile can be adopted wholesale and still overridden one
+	// setting at a time, which is the precedence spec section 5 already
+	// states for the built-in profiles.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "p.json")
+	body := `{"name":"x","options":{"ImageMaxWidth":1264}}`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	in := writeFixture(t)
+	code, _, stderr := runCLI("convert", in, "-o", filepath.Join(dir, "o.epub"),
+		"--profile-file", path, "--image-max-width", "300", "--quiet")
+	if code != exitOK {
+		t.Fatalf("exit code = %d\n%s", code, stderr)
+	}
+}

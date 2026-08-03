@@ -560,10 +560,6 @@ type Options struct {
 	// ImageMaxWidth is the longest edge in pixels; 0 disables scaling.
 	ImageMaxWidth int
 
-	// Jobs is the page-parallel worker count. It must not affect output
-	// bytes.
-	Jobs int
-
 	// Deterministic fixes the output timestamp. When zero, the PDF ModDate
 	// is used, then the Unix epoch.
 	Deterministic time.Time
@@ -582,7 +578,6 @@ func DefaultOptions() Options {
 		Images:        ImagesKeep,
 		ImageMaxWidth: 1600,
 		Tables:        TableAuto,
-		Jobs:          1,
 	}
 }
 
@@ -653,9 +648,6 @@ func (o *Options) validate() error {
 	}
 	if o.ImageMaxWidth < 0 {
 		return fmt.Errorf("image max width %d is negative", o.ImageMaxWidth)
-	}
-	if o.Jobs < 0 {
-		return fmt.Errorf("jobs %d is negative", o.Jobs)
 	}
 	if o.Columns < 0 || o.Columns > 3 {
 		return fmt.Errorf("columns %d is out of range (want auto, 1, 2, or 3)", o.Columns)

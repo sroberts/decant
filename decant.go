@@ -154,11 +154,6 @@ func (c *Converter) Analyze(ctx context.Context, r io.ReaderAt, size int64) (*Do
 	}
 	rep.PagesConverted = len(pages)
 
-	if c.opts.Jobs > 1 {
-		rep.info("analyze", -1,
-			"page-parallel processing is not enabled yet; --jobs is accepted but ignored")
-	}
-
 	// Stage 2 sample first, so a scanned document fails before any
 	// segmentation work happens. Results are cached and reused below.
 	cache := map[int]*pdf.PageContent{}

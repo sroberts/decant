@@ -45,7 +45,7 @@ func cmdConvert(ctx context.Context, args []string, stdout, stderr io.Writer) er
 		keepSmall     = fs.Bool("keep-small-images", false, "retain images the size rules would drop")
 		reportPath    = fs.String("report", "", "write a JSON conversion report to this path")
 		strict        = fs.Bool("strict", false, "exit non-zero when any quality threshold is breached")
-		jobs          = fs.Int("jobs", runtime.NumCPU(), "page-parallel workers; does not affect output bytes")
+		jobs          = fs.Int("jobs", runtime.NumCPU(), "reserved; page processing is currently sequential")
 		date          = fs.String("date", "", "fixed RFC 3339 timestamp for reproducible builds")
 		quiet         = fs.Bool("quiet", false, "suppress the summary on stderr")
 	)
@@ -70,6 +70,18 @@ func cmdConvert(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	// Features accepted for CLI compatibility with the spec surface but not
 	// yet implemented. Refusing silently would be worse than saying so.
 
+	// --jobs is accepted for compatibility with the documented flag set but
+	// does nothing. Spec 4 assumed stages 2 through 6 would parallelize per
+	// page; stage 2 is glyph extraction, which runs inside pdfcpu, and
+	// pdfcpu's xref table is mutated on every dereference with no lock. Only
+	// stage 3 through 6 could move, and measurement puts that at about 4% of
+	// a conversion. Principle 3 says to say so rather than silently ignore
+	// the flag.
+	if set["jobs"] && *jobs != 1 {
+		fmt.Fprintln(stderr,
+			"decant: note: --jobs is reserved; page processing is currently sequential")
+	}
+
 	nColumns, err := parseColumns(*columns)
 	if err != nil {
 		return &decant.UsageError{Err: err}
@@ -84,7 +96,6 @@ func cmdConvert(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	opts.NoDehyphenate = *noDehyphenate
 	opts.KeepHeaders = *keepHeaders
 	opts.Strict = *strict
-	opts.Jobs = *jobs
 	opts.Columns = nColumns
 	opts.KeepSmallImages = *keepSmall
 	opts.Tables = decant.TableMode(*tableMode)

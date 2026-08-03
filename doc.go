@@ -56,8 +56,8 @@
 //
 // # Determinism
 //
-// Identical input and options produce byte-identical output, regardless of
-// [Options.Jobs]. Anchor IDs are content hashes rather than counters, the
+// Identical input and options produce byte-identical output. Anchor IDs are
+// content hashes rather than counters, the
 // package identifier is a UUIDv5 over the input's SHA-256, and ZIP entries
 // carry a fixed timestamp taken from [Options.Deterministic], the PDF
 // ModDate, or the Unix epoch, in that order. Reconverting a file therefore

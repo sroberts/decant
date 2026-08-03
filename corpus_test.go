@@ -480,10 +480,12 @@ func TestCorpusDeterminism(t *testing.T) {
 				t.Skip(err)
 			}
 
-			run := func(jobs int) ([]byte, error) {
-				opts := defaultOpts()
-				opts.Jobs = jobs
-				conv, err := decant.New(opts)
+			// Each run builds its own Converter, so the comparison covers
+			// process state as well as input. It used to vary --jobs, but
+			// that option never did anything and no longer exists, so the
+			// comparison held for the wrong reason.
+			run := func() ([]byte, error) {
+				conv, err := decant.New(defaultOpts())
 				if err != nil {
 					return nil, err
 				}
@@ -493,16 +495,16 @@ func TestCorpusDeterminism(t *testing.T) {
 				return buf.Bytes(), err
 			}
 
-			a, errA := run(1)
+			a, errA := run()
 			if errA != nil {
 				t.Skipf("not convertible: %v", classify(errA))
 			}
-			b, errB := run(16)
+			b, errB := run()
 			if errB != nil {
 				t.Fatalf("second run failed after the first succeeded: %v", errB)
 			}
 			if !bytes.Equal(a, b) {
-				t.Errorf("output differed between --jobs=1 and --jobs=16 (%d vs %d bytes)",
+				t.Errorf("two conversions of one file differed (%d vs %d bytes)",
 					len(a), len(b))
 			}
 		})

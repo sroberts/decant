@@ -228,7 +228,7 @@ func (c *Converter) Analyze(ctx context.Context, r io.ReaderAt, size int64) (*Do
 		rep.warn("images", -1, fmt.Sprintf(
 			"%d of %d page(s) draw vector artwork that was not rendered "+
 				"(%d painted paths); charts and diagrams drawn as paths are "+
-				"lost, and spec section 13 keeps rasterization open",
+				"lost; spec section 13 closed rasterization as out of scope for v1",
 			rep.VectorPagesDropped, len(pages), rep.VectorPaintsDropped))
 	}
 
@@ -307,8 +307,9 @@ func (c *Converter) analyzePage(
 	m.VectorPaints = pc.VectorPaints
 
 	// Vector artwork is not rendered. Spec section 1 puts conversion to SVG
-	// out of scope for v1 and section 13 keeps rasterization open, so a chart
-	// drawn as paths is lost. Principle 3 requires that to be visible rather
+	// out of scope for v1 and section 13 closed rasterization the same way, so
+	// a chart drawn as paths is lost. Principle 3 requires that to be visible
+	// rather
 	// than silent, so the page is counted here and summarized once for the
 	// document; a per-page warning on a book full of diagrams would be noise.
 	if pc.VectorPaints >= c.opts.Heuristics.VectorMinPaints {

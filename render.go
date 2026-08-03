@@ -559,7 +559,8 @@ func renderRuns(b Block, raw string, noteRefs bool) string {
 // both detection signals fired, and space-preserved text otherwise.
 //
 // Section 4.8 originally rasterized the region at medium confidence. That
-// needed the vector renderer section 13 leaves for after v1, so the mode
+// needed a vector renderer, which section 13 closed as out of scope for v1,
+// so the mode
 // never did anything but degrade to text with a warning, and it was removed
 // rather than frozen into the v1 API as a permanent no-op.
 func (c *Converter) renderTable(sb *strings.Builder, b Block, rep *Report) {

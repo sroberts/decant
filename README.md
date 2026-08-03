@@ -220,7 +220,15 @@ position recorded for scan detection but are not extracted.
 Vector artwork is not rendered, so a chart drawn as paths is lost. It is
 reported rather than dropped silently: the conversion report counts painted
 paths per page and warns when a page carries enough of them to be a diagram.
-Rasterization is spec §13's one remaining open decision.
+Rasterization was **considered and declined** for v1 (spec §13, closed
+2026-08-03). §1 permits either rasterizing or dropping, and dropping is what
+decant does.
+
+In practice that means a **diagram-heavy academic PDF loses its figures**.
+On the sample corpus the warning fires on 39 of one mathematics textbook's
+117 pages and on nothing else, so the exposure is narrow, but if your library
+is mostly papers with plotted charts, expect to lose them and to be told so.
+The text around them converts normally.
 
 Table detection still over-fires on mathematical typesetting. On the corpus's
 LaTeX textbook it reports eight medium-confidence tables that are really

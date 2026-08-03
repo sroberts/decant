@@ -229,7 +229,7 @@ The `image` mode this section originally specified, rasterizing the region to PN
 - `TableMinFilledRatio` (0.5) applies twice: to the fraction of cells carrying any text, and to the fraction of filled cells carrying more than a single character. The first rejects layout frames; the second rejects a plotted graph's axes and tick labels, and diagrams drawn from repeated marks, both of which form a fully aligned grid whose cells hold one glyph each.
 - A candidate from the alignment signal is rejected when its rows straddle more than one of the page's detected columns. Section 4.3 owns that geometry: on a two-column page every left-column line shares a baseline with a right-column line, so the rows are perfectly aligned and every boundary is shared. Nothing in the text distinguishes that from a two-column table, but the page layout does, and treating it as a table flattens the reading order into rows read across instead of down.
 
-Medium confidence cannot rasterize while section 13.1 stays open, so it degrades to `text` and records a warning rather than silently substituting.
+Medium confidence emits text. §13 closed vector rasterization as out of scope for v1, so there is no rasterized form for it to take.
 
 Residual over-firing is real and documented rather than tuned away: on the corpus's LaTeX textbook, detection reports eight medium-confidence tables that are mathematical displays. Section 11 warns against tuning against a handful of files, and this corpus contains only one document with a genuine ruled table.
 
@@ -452,13 +452,17 @@ GitHub Flow throughout: branch off `main` per milestone or fix, commit, push, op
 
 ## 13. Open Decisions
 
-1. **Vector graphics.** Charts drawn as paths are not rendered. They no longer vanish silently: the interpreter counts painted paths per page and the conversion report warns when a page carries more than `VectorMinPaints` of them, which principle 3 requires while the question stays open. On the sample corpus that fires on 39 of the 117 pages of the one mathematics textbook and on nothing else.
-
-    Two constraints have since narrowed the decision. Conversion to SVG is dead rather than merely out of scope: CrossPoint's EPUB path decodes JPG and PNG only (section 13, closed), so rasterizing to PNG is the only output that reaches the target device. And the rendering engine the original note worried about is largely present already: `golang.org/x/image/vector` is a pure-Go rasterizer under BSD-3 and `golang.org/x/image` is a direct dependency. What remains is Bézier flattening, fill rules, stroking, and the colour operators.
-
-    Table detection in section 4.8 requires interpreting `re` and `l` with stroke widths regardless, so M5 has to build path tracking whether or not vector artwork is ever rendered. Deciding this after that work, rather than before it, costs nothing and removes most of the estimate's uncertainty.
+None.
 
 **Closed:**
+
+- **Vector graphics** (2026-08-03): **drop, not rasterize, for v1.** Charts drawn as paths are lost. They do not vanish silently: the interpreter counts painted paths per page and the report warns when a page carries more than `VectorMinPaints` of them, which is what principle 3 requires. On the sample corpus that fires on 39 of the 117 pages of the one mathematics textbook and on nothing else.
+
+    §1 already permits either outcome ("vector regions rasterize or drop"), so this closes the question rather than deferring it. Rasterizing to PNG remains the only viable rendering target if it is ever revisited, since CrossPoint's EPUB path decodes JPG and PNG only.
+
+    The estimate was checked against the code before deciding, and the earlier note that the rendering engine was "largely present already" was optimistic. `golang.org/x/image/vector` supplies a pure-Go BSD-3 rasterizer, but decant does not currently hold anything to hand it: `interpreter.path`, `.subpaths` and `.cur` are all `Rect`, so curve operators collapse to bounding boxes and no point sequence survives. No colour operator is interpreted at all — `rg g k cs sc scn` and their stroking counterparts have no cases — so everything would render flat black. The remaining work is therefore path retention, Bézier flattening, nonzero and even-odd fill, stroke-to-outline with caps and joins, clipping, and colour state, plus choosing raster regions and resolution and placing the result in reading order. That is a subsystem, and retained geometry on a diagram-heavy page is a new draw against §9's memory budget.
+
+    Adding a renderer later is purely additive, so nothing here forecloses it.
 
 - **CrossPoint in-EPUB image formats** (2026-08-01): the EPUB path reads JPG and PNG, so the `crosspoint` profile keeps paletted PNG for line art and uses dithered JPEG only for photographs. Settled by reading the firmware: `ImageDecoderFactory` dispatches by extension to a `PNGdec`-backed decoder that handles indexed PNG with palette transparency, and no BMP decoder exists in that path. PNG costs 24 KB more free heap than JPEG (60 KB against 36 KB) and fails closed, which is why the choice stays narrow. See section 5.1.
 - **CrossPoint XHTML size ceiling** (2026-08-01): not a memory constraint, and `--max-chunk-bytes` for the `crosspoint` profile is therefore 262144, the same as `standard`. Settled by reading the firmware rather than measuring: XHTML streams through expat in 1 KB chunks and pages are serialized to the SD card as they complete, so only a 12-byte-per-page lookup table scales with chapter length, about 0.9% of chapter bytes. The out-of-memory crashes in the release notes were the CSS parser, now guarded at 128 KB; decant emits under 1 KB of CSS. See section 5.1. The binding consideration is cache rebuild cost after a section-format bump, not RAM.

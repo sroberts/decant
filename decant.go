@@ -226,6 +226,11 @@ func (c *Converter) Analyze(ctx context.Context, r io.ReaderAt, size int64) (*Do
 	c.linkFootnotes(doc.Blocks, rep)
 	resolveCrossRefs(doc.Blocks, pageSpaceY, rep)
 
+	// Scope warnings need the whole document: the script ratio is a
+	// document-wide statistic, not a per-page one, so a single Hebrew
+	// epigraph in a Latin book does not warn on its own page.
+	c.warnOnScope(rep)
+
 	for _, b := range doc.Blocks {
 		rep.Blocks[b.Kind]++
 		if b.Kind == KindHeading {
@@ -344,6 +349,19 @@ func (c *Converter) analyzePage(
 	if r := m.DecodeFailureRate(); r > 0.05 {
 		rep.warn("glyphs", idx,
 			fmt.Sprintf("%.1f%% of glyphs failed to decode to Unicode", r*100))
+	}
+
+	// Script and writing mode, for the scope warnings in spec section 1.
+	for _, l := range pl.Lines {
+		letters, rtl := countScripts(l.Text)
+		m.Letters += letters
+		m.RTLLetters += rtl
+	}
+	for _, f := range pc.Fonts {
+		if f != nil && f.Vertical() {
+			m.VerticalText = true
+			break
+		}
 	}
 
 	// Accumulate the document-wide font statistics the body font derives
@@ -1076,4 +1094,41 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// warnOnScope reports layouts spec section 1 puts out of scope beyond basic
+// text extraction.
+//
+// Both are extraction successes and layout failures: the runes come through,
+// but decant emits them in logical order with no bidirectional reordering and
+// no vertical setting, so a reader sees something the source did not show.
+// Principle 3 requires saying so rather than presenting the result as a
+// faithful conversion.
+func (c *Converter) warnOnScope(rep *Report) {
+	var letters, rtl, vertical int
+	for _, m := range rep.Pages {
+		letters += m.Letters
+		rtl += m.RTLLetters
+		if m.VerticalText {
+			vertical++
+		}
+	}
+
+	if letters > 0 {
+		rep.RTLLetterRatio = float64(rtl) / float64(letters)
+	}
+	rep.VerticalTextPages = vertical
+
+	if letters > 0 && rep.RTLLetterRatio >= c.opts.Heuristics.RTLLetterRatio {
+		rep.warn("classify", -1, fmt.Sprintf(
+			"%.0f%% of letters are right-to-left; spec section 1 puts bidirectional "+
+				"layout out of scope, so text is extracted but not reordered and "+
+				"lines may read in the wrong direction", rep.RTLLetterRatio*100))
+	}
+	if vertical > 0 {
+		rep.warn("classify", -1, fmt.Sprintf(
+			"%d page(s) use a vertical writing mode; spec section 1 puts vertical "+
+				"CJK layout out of scope, so text is extracted but set horizontally",
+			vertical))
+	}
 }

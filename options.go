@@ -276,6 +276,14 @@ type Heuristics struct {
 	// grids; without this guard a mathematics textbook yields phantom tables.
 	TableMinFilledRatio float64
 
+	// RTLLetterRatio is the fraction of a document's letters that must belong
+	// to a right-to-left script before spec section 1's scope warning fires.
+	// Default 0.2.
+	//
+	// A ratio rather than any occurrence at all: a Latin book quoting a line
+	// of Hebrew is not a bidirectional document, and warning on it would
+	// train the reader to ignore the warning that matters.
+	RTLLetterRatio float64
 	// VectorMinPaints is the number of painted paths a page must carry before
 	// its vector artwork is reported as dropped content. Default 24.
 	//
@@ -339,6 +347,7 @@ func DefaultHeuristics() Heuristics {
 		FootnoteSizeRatio:    0.1,
 		SuperscriptRiseEm:    0.2,
 		SuperscriptSizeRatio: 0.85,
+		RTLLetterRatio:       0.2,
 		VectorMinPaints:      24,
 
 		RuleMaxThickness:      2,

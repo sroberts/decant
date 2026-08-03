@@ -213,6 +213,13 @@ the language rather than take on a share-alike or renaming condition. Those
 documents convert normally with dehyphenation disabled and a diagnostic.
 See [`THIRD_PARTY.md`](THIRD_PARTY.md).
 
+Right-to-left and vertical CJK documents **convert, with a warning**. The
+text is extracted correctly, but decant emits it in logical order: it does not
+run the bidirectional algorithm and does not set vertical columns, so lines
+may read in the wrong direction. The report carries `rtl_letter_ratio` and
+`vertical_text_pages`, and the warning fires once the document is
+substantially right-to-left rather than on a single quoted phrase.
+
 JPEG 2000 and JBIG2 images drop with a diagnostic: neither has a pure-Go
 decoder, and spec principle 2 rules out cgo. Inline (`BI`) images have their
 position recorded for scan detection but are not extracted.

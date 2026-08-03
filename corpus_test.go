@@ -748,3 +748,56 @@ func TestCorpusSerializationLosesNoText(t *testing.T) {
 		})
 	}
 }
+
+// TestCorpusScopeWarnings is the end-to-end half of spec section 1's
+// detect-and-warn requirement.
+//
+// The unit tests in script_internal_test.go cover the predicate and the
+// threshold; this covers the path from a real bidirectional PDF through glyph
+// extraction and line assembly to the report, which a synthetic fixture
+// cannot reach because testpdf writes literal bytes against a base-14 font
+// and a Hebrew string decodes back as Latin.
+func TestCorpusScopeWarnings(t *testing.T) {
+	dir := corpusDir(t)
+
+	for _, rel := range corpusPDFs(t, dir) {
+		if !strings.Contains(rel, "arabic") {
+			continue
+		}
+		t.Run(rel, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
+			if err != nil {
+				t.Skip(err)
+			}
+			conv, err := decant.New(defaultOpts())
+			if err != nil {
+				t.Fatal(err)
+			}
+			var out bytes.Buffer
+			rep, err := conv.Convert(context.Background(),
+				bytes.NewReader(data), int64(len(data)), &out)
+			if err != nil {
+				t.Skipf("not convertible: %v", classify(err))
+			}
+
+			if rep.RTLLetterRatio < 0.2 {
+				t.Fatalf("RTLLetterRatio = %.2f on an Arabic document",
+					rep.RTLLetterRatio)
+			}
+			found := false
+			for _, d := range rep.Diagnostics {
+				if d.Severity == decant.SeverityWarning &&
+					strings.Contains(d.Message, "right-to-left") {
+					found = true
+				}
+			}
+			if !found {
+				t.Error("an Arabic document converted with no scope warning")
+			}
+			// Detect and warn, not refuse.
+			if out.Len() == 0 {
+				t.Error("the warning suppressed the output")
+			}
+		})
+	}
+}

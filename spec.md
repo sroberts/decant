@@ -198,7 +198,7 @@ Implementation notes:
 
 - Liang's algorithm is roughly 200 lines: build a trie from the pattern set, score every inter-letter position, and treat odd scores as legal break points. Standard `\patterns{}` files parse directly.
 - Vendor pattern sets from the `hyph-utf8` distribution via `go:embed`. Each language costs 20 to 100 KB, so embedding the top 10 to 15 languages stays under 1 MB. Ship English, German, French, Spanish, Italian, Portuguese, Dutch, Polish, Russian, and Swedish in v1.
-- Select the pattern set from `--language`, falling back to PDF `/Lang`, then XMP `dc:language`, then `en-us`. When no pattern set matches the detected language, disable dehyphenation and record it in the report rather than guessing with English patterns.
+- Select the pattern set from `--language`, falling back to PDF `/Lang`, then XMP `dc:language`, then `en-us`. The XMP step reads the catalog's `/Metadata` stream and matches `dc:language` textually rather than parsing RDF/XML: decant wants one string out of an untrusted packet, and running an XML parser over it to reach that string buys risk rather than correctness. Both the bare and `rdf:Bag`/`Seq`/`Alt` forms are matched; `x-default` names no language and is ignored. The catalog wins over XMP when both are present, since it is the PDF's own statement about itself while XMP is a packet tooling copies between files and lets go stale. When no pattern set matches the detected language, disable dehyphenation and record it in the report rather than guessing with English patterns.
 - Patterns handle common vocabulary, not proper nouns or technical jargon. Keep the override rules: retain the hyphen when both fragments capitalize, when a digit sits on either side, and inside code blocks.
 - Licensing varies per language file (MIT, LPPL, and a few custom permissive terms). decant ships MIT, so vendor only files under MIT, BSD, or unrestricted terms. Skip any pattern set whose license imposes renaming or share-alike conditions, and drop that language from the shipped set rather than complicating the license. Record every file's terms in `THIRD_PARTY.md`.
 
@@ -369,7 +369,7 @@ error: no usable text layer (median 3 glyphs/page across 20 sampled pages,
        writes a text layer (ocrmypdf, tesseract --pdf), then convert the result.
 ```
 
-`--images-only` remains available and emits an image-per-page EPUB. That output is not reflowable and exists only as an escape hatch for documents worth shelving on the device as-is.
+**`--images-only` is removed (M6).** Earlier drafts offered it as an escape hatch emitting an image-per-page EPUB. It contradicted §1, which rejects scanned PDFs outright, and this section, which exits 4; it never appeared in §3's flag table; and it was never implemented. An image-per-page EPUB is also not reflowable, which is the premise of the tool, and shelving a document on the device as-is is what copying the PDF across already does.
 
 Two edge cases the classifier must not misfire on: a text PDF whose body sits entirely in mode-3 invisible text over page images (a searchable scan, which converts fine and must pass), and an image-heavy art book with sparse but real captions (converts, with a warning).
 

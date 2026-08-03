@@ -393,6 +393,13 @@ func (d *Document) readInfo() Info {
 			inf.Language = strings.TrimSpace(l)
 		}
 	}
+	// Spec 4.6 falls back to XMP dc:language when the catalog declares no
+	// /Lang. The catalog wins when both are present: it is the PDF's own
+	// statement about itself, while XMP is a metadata packet that tooling
+	// copies between files and lets go stale.
+	if inf.Language == "" {
+		inf.Language = xmpLanguage(xref)
+	}
 	return inf
 }
 

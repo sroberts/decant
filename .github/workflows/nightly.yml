@@ -28,7 +28,9 @@ jobs:
           check-latest: true
 
       - name: Install epubcheck and poppler
-        run: sudo apt-get update && sudo apt-get install -y epubcheck poppler-utils
+        uses: ./.github/actions/apt-install
+        with:
+          packages: epubcheck poppler-utils
 
       - name: Fetch the corpus
         run: make corpus
@@ -41,7 +43,10 @@ jobs:
           go test -coverpkg=./... -coverprofile=coverage.out ./...
           go tool cover -func=coverage.out | tail -1
 
+      # Reporting only; a summary that fails to render should not fail a
+      # nightly whose actual job is the coverage number above it.
       - name: Per-package breakdown
+        continue-on-error: true
         run: |
           echo "### Coverage" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
@@ -64,7 +69,9 @@ jobs:
           check-latest: true
 
       - name: Install epubcheck and poppler
-        run: sudo apt-get update && sudo apt-get install -y epubcheck poppler-utils
+        uses: ./.github/actions/apt-install
+        with:
+          packages: epubcheck poppler-utils
 
       - name: Fetch the corpus
         run: make corpus

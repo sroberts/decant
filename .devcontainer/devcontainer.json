@@ -1,0 +1,31 @@
+{
+  "name": "decant",
+  "image": "mcr.microsoft.com/devcontainers/go:1-bookworm",
+
+  "features": {
+    // epubcheck is a Java program. Spec section 12 makes zero epubcheck
+    // errors a merge gate, so without a JVM the gate silently does not run.
+    "ghcr.io/devcontainers/features/java:1": {
+      "version": "21",
+      "installMaven": false,
+      "installGradle": false
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": ["golang.go"],
+      "settings": {
+        "go.lintTool": "staticcheck",
+        "go.formatTool": "gofmt"
+      }
+    }
+  },
+
+  // The corpus is fetched into the workspace by "make corpus" and is
+  // deliberately not vendored, so it does not need mounting.
+  "remoteUser": "vscode"
+}

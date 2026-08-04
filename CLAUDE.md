@@ -109,6 +109,10 @@ Violating one of these is a design regression, not a style nit.
 
 `0` success · `1` runtime · `2` usage · `3` encrypted · `4` no text layer · `5` warnings with `--strict` · `6` malformed. Diagnostics to stderr; `--json` to stdout, unmixed.
 
+## Development environment
+
+`.devcontainer/` provisions Go, a JVM, `epubcheck`, `poppler-utils`, `staticcheck` and `gh`. Use it or install those by hand — **without `epubcheck` and `poppler` the corpus tests skip rather than fail**, so a contributor missing them sees a green suite that never ran two of the CI gates.
+
 ## Testing approach
 
 Golden tests assert on extracted text plus a **structure fingerprint** (ordered element types and heading levels), never byte-identical XHTML, so formatting refactors don't churn the corpus. `internal/testpdf` builds synthetic fixtures in memory.
@@ -156,6 +160,8 @@ Four workflows, split by latency budget.
 - `nightly.yml`: the full coverage suite with the corpus present, epubcheck and reading-order across every file, cross-compilation of all five release targets, a licence audit against what is actually linked, and a **10-minute** fuzz per target.
 - `flaky.yml` weekly: runs the suite five times under `-race` and reports anything that fails some runs but not all. `flaky-tests.json` records what has been seen and what came of it; entries stay after they are fixed, because the record is the useful part.
 - `acceptance.yml` weekly: recomputes `acceptance-rates.json` from PR history.
+
+Every apt install goes through `.github/actions/apt-install`, a composite action that retries with a per-attempt timeout. It is shell rather than a retry action because this repository audits what it depends on and a third-party action runs arbitrary code on the runner with the workflow token. The timeout matters more than the retry: the failure it exists for was an install that hung for twenty minutes, which a bare retry would not have caught because nothing had failed yet.
 
 The licence audit uses `go list -deps`, not `go list -m all`. The latter includes test-only and tool dependencies — pdfcpu pulls in cobra for its own CLI — which are never linked into decant and whose licences we do not redistribute.
 

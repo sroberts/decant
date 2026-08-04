@@ -1,0 +1,57 @@
+name: Install apt packages
+description: >-
+  Install apt packages with a per-attempt timeout and retries, so a hung
+  mirror does not take the job with it.
+
+inputs:
+  packages:
+    description: Space-separated package list
+    required: true
+  attempts:
+    description: How many times to try
+    required: false
+    default: "3"
+  timeout:
+    description: Per-attempt timeout, as a coreutils timeout duration
+    required: false
+    default: "5m"
+
+runs:
+  using: composite
+  steps:
+    # Written in shell rather than with a retry action on purpose. This
+    # repository audits what it depends on, and a third-party action runs
+    # arbitrary code on the runner with the workflow token; a dozen lines of
+    # bash is cheaper to read than that is to trust.
+    #
+    # The timeout is the part that matters, more than the retry. The failure
+    # this exists for was an apt install that hung for twenty minutes and
+    # took the job with it, which a bare retry would not have helped: nothing
+    # had failed yet. Killing a stuck attempt is what makes the retry useful.
+    - shell: bash
+      env:
+        PACKAGES: ${{ inputs.packages }}
+        ATTEMPTS: ${{ inputs.attempts }}
+        ATTEMPT_TIMEOUT: ${{ inputs.timeout }}
+      run: |
+        set -uo pipefail
+        for i in $(seq 1 "$ATTEMPTS"); do
+          echo "::group::apt attempt $i of $ATTEMPTS"
+          if timeout "$ATTEMPT_TIMEOUT" sudo apt-get update \
+             && timeout "$ATTEMPT_TIMEOUT" sudo apt-get install -y $PACKAGES; then
+            echo "::endgroup::"
+            echo "installed: $PACKAGES"
+            exit 0
+          fi
+          status=$?
+          echo "::endgroup::"
+          if [ "$status" -eq 124 ]; then
+            echo "attempt $i timed out after $ATTEMPT_TIMEOUT"
+          else
+            echo "attempt $i failed with status $status"
+          fi
+          # Back off a little; a mirror that just failed is often briefly busy.
+          [ "$i" -lt "$ATTEMPTS" ] && sleep $((i * 10))
+        done
+        echo "apt install failed after $ATTEMPTS attempts: $PACKAGES"
+        exit 1

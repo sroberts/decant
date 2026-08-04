@@ -18,8 +18,12 @@ go test ./...
 ```
 
 CI enforces all four, plus `go test -race`, `epubcheck` against every corpus
-output, and short fuzz runs. `epubcheck` and `poppler` must be on `PATH` or
-the validation tests skip silently.
+output, and short fuzz runs.
+
+**`epubcheck` and `poppler` must be on `PATH` or the validation tests skip
+silently** — a green suite without them is not the same as a green suite. The
+`.devcontainer/` in this repo installs everything, including a JVM for
+epubcheck; open the repo in a container and it is done for you.
 
 ## What makes a change likely to be merged
 

@@ -30,7 +30,9 @@ jobs:
           check-latest: true
 
       - name: Install epubcheck and poppler
-        run: sudo apt-get update && sudo apt-get install -y epubcheck poppler-utils
+        uses: ./.github/actions/apt-install
+        with:
+          packages: epubcheck poppler-utils
 
       - name: Fetch the corpus
         run: make corpus

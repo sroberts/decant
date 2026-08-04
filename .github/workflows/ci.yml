@@ -27,8 +27,9 @@ jobs:
           java-version: '21'
 
       - name: Install epubcheck
-        run: |
-          sudo apt-get update && sudo apt-get install -y epubcheck
+        uses: ./.github/actions/apt-install
+        with:
+          packages: epubcheck
 
       - name: Build
         run: go build ./...
@@ -78,7 +79,9 @@ jobs:
           java-version: '21'
 
       - name: Install epubcheck and poppler
-        run: sudo apt-get update && sudo apt-get install -y epubcheck poppler-utils
+        uses: ./.github/actions/apt-install
+        with:
+          packages: epubcheck poppler-utils
 
       - name: Cache the corpus
         uses: actions/cache@v4

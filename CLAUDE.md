@@ -152,7 +152,7 @@ decant ships MIT, so vendored `hyph-utf8` hyphenation patterns must be MIT, BSD,
 
 Four workflows, split by latency budget.
 
-- `ci.yml` on every push and PR: build, gofmt, vet, staticcheck, race tests, an 85% coverage floor, the corpus manifest, epubcheck, and a 60-second fuzz per target.
+- `ci.yml` on every push and PR: build, gofmt, vet, staticcheck, race tests, the corpus manifest, epubcheck, a 60-second fuzz per target, and an 85% coverage floor. The floor lives in the **corpus** job, not the test job: without the corpus every corpus test skips and the total lands about seven points lower (80.3% against 87.3%), which would measure how much of the suite ran rather than how much code is covered.
 - `nightly.yml`: the full coverage suite with the corpus present, epubcheck and reading-order across every file, cross-compilation of all five release targets, a licence audit against what is actually linked, and a **10-minute** fuzz per target.
 - `flaky.yml` weekly: runs the suite five times under `-race` and reports anything that fails some runs but not all. `flaky-tests.json` records what has been seen and what came of it; entries stay after they are fixed, because the record is the useful part.
 - `acceptance.yml` weekly: recomputes `acceptance-rates.json` from PR history.

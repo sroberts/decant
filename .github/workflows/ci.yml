@@ -54,31 +54,6 @@ jobs:
       - name: Test with race detector
         run: go test -race ./...
 
-      # Coverage is measured with -coverpkg across the whole module: the root
-      # package's tests drive the internal ones heavily, so per-package
-      # numbers understate what is actually exercised. The gate sits below
-      # the current figure so it ratchets rather than tripping on the next
-      # honest refactor; raise it when the headroom grows.
-      - name: Coverage gate
-        env:
-          COVERAGE_THRESHOLD: "85.0"
-        run: |
-          go test -coverpkg=./... -coverprofile=coverage.out ./...
-          go tool cover -func=coverage.out | tail -1
-          total=$(go tool cover -func=coverage.out | tail -1 | grep -oE '[0-9]+\.[0-9]+')
-          threshold="${COVERAGE_THRESHOLD}"
-          echo "coverage ${total}% against a ${threshold}% floor"
-          awk -v t="$total" -v f="$threshold" 'BEGIN { exit (t+0 >= f+0) ? 0 : 1 }' || {
-            echo "coverage ${total}% is below the ${threshold}% floor"
-            exit 1
-          }
-
-      - name: Upload coverage
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage
-          path: coverage.out
-
       - name: Verify the module is tidy
         run: |
           go mod tidy
@@ -131,6 +106,32 @@ jobs:
 
       - name: Corpus epubcheck validation
         run: go test -run TestCorpusEPUBCheck ./...
+
+      # Measured here rather than in the test job because that job has no
+      # corpus, so every corpus test skips and the total lands about seven
+      # points lower -- 80.3% against 87.3% -- which would make the floor
+      # measure how much of the suite ran rather than how much code is
+      # covered.
+      - name: Coverage gate
+        env:
+          COVERAGE_THRESHOLD: "85.0"
+        run: |
+          go test -coverpkg=./... -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out | tail -1
+          total=$(go tool cover -func=coverage.out | tail -1 | grep -oE '[0-9]+\.[0-9]+')
+          threshold="${COVERAGE_THRESHOLD}"
+          echo "coverage ${total}% against a ${threshold}% floor"
+          awk -v t="$total" -v f="$threshold" 'BEGIN { exit (t+0 >= f+0) ? 0 : 1 }' || {
+            echo "coverage ${total}% is below the ${threshold}% floor"
+            exit 1
+          }
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+
 
   fuzz:
     runs-on: ubuntu-latest

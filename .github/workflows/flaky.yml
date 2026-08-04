@@ -1,0 +1,88 @@
+name: Flaky test analysis
+
+# Runs the suite repeatedly to surface intermittents.
+#
+# The point is the difference between runs, not any single result. A test that
+# passes 9 times and fails once will not be caught by CI, but it will mislead
+# an agent that reruns and sees green — which is exactly how the pdfcpu config
+# race in flaky-tests.json nearly got dismissed.
+on:
+  schedule:
+    # Sundays 05:00 UTC.
+    - cron: "0 5 * * 0"
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "How many times to run the suite"
+        default: "5"
+
+permissions:
+  contents: read
+
+jobs:
+  repeat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          check-latest: true
+
+      - name: Install epubcheck and poppler
+        run: sudo apt-get update && sudo apt-get install -y epubcheck poppler-utils
+
+      - name: Fetch the corpus
+        run: make corpus
+
+      # -count=1 defeats the test cache, which would otherwise make every run
+      # after the first meaningless. -race because the races are what this is
+      # hunting; the config-file race only ever appeared under it.
+      - name: Repeat the suite
+        env:
+          RUNS: ${{ github.event.inputs.runs || '5' }}
+        run: |
+          set +e
+          failures=0
+          : > failed-tests.txt
+          for i in $(seq 1 "$RUNS"); do
+            echo "::group::run $i of $RUNS"
+            go test -count=1 -race ./... 2>&1 | tee "run-$i.log"
+            status=${PIPESTATUS[0]}
+            echo "::endgroup::"
+            if [ "$status" -ne 0 ]; then
+              failures=$((failures + 1))
+              grep -hoE '^--- FAIL: [A-Za-z0-9_/]+' "run-$i.log" | sed 's/^--- FAIL: //' >> failed-tests.txt
+            fi
+          done
+
+          echo "### Flaky analysis" >> "$GITHUB_STEP_SUMMARY"
+          echo "$failures of $RUNS runs failed." >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$failures" -eq 0 ]; then
+            echo "No intermittents in $RUNS runs." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # A test failing every run is broken, not flaky, and CI already
+          # caught it. Only something failing some of the time is news here.
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| test | failed runs |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          sort failed-tests.txt | uniq -c | sort -rn | while read -r n name; do
+            if [ "$n" -lt "$RUNS" ]; then
+              echo "| \`$name\` | $n / $RUNS — intermittent |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "| \`$name\` | $n / $RUNS — consistent, not a flake |" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Add anything intermittent to flaky-tests.json with a diagnosis." >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: flaky-run-logs
+          path: run-*.log

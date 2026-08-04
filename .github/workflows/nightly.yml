@@ -1,0 +1,135 @@
+name: Nightly
+
+# The heavy checks that do not fit a per-PR latency budget.
+#
+# CI on every push runs a 60-second fuzz per target and the corpus once. That
+# is a smoke test. This is where the parser actually gets hammered, where
+# coverage is measured against slow-changing code the PR gate never touches,
+# and where the release build is proven on every target before a tag depends
+# on it.
+on:
+  schedule:
+    # 04:00 UTC daily.
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coverage-suite:
+    name: Full coverage suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          check-latest: true
+
+      - name: Install epubcheck and poppler
+        run: sudo apt-get update && sudo apt-get install -y epubcheck poppler-utils
+
+      - name: Fetch the corpus
+        run: make corpus
+
+      # With the corpus present the epubcheck, reading-order and determinism
+      # tests all run, so this measures far more of the tree than the PR gate,
+      # which sees them skip.
+      - name: Coverage across the whole module
+        run: |
+          go test -coverpkg=./... -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out | tail -1
+
+      - name: Per-package breakdown
+        run: |
+          echo "### Coverage" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          go tool cover -func=coverage.out | tail -20 >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nightly-coverage
+          path: coverage.out
+
+  compliance:
+    name: Compliance and validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          check-latest: true
+
+      - name: Install epubcheck and poppler
+        run: sudo apt-get update && sudo apt-get install -y epubcheck poppler-utils
+
+      - name: Fetch the corpus
+        run: make corpus
+
+      # Zero epubcheck errors is the merge gate in spec section 12. Running it
+      # nightly catches a validator update turning something we emit into an
+      # error, which a green PR would otherwise hide until release day.
+      - name: epubcheck every corpus output
+        run: go test -run TestCorpusEPUBCheck -v ./...
+
+      - name: Reading order against pdftotext
+        run: go test -run TestCorpusReadingOrder ./...
+
+      - name: Content fidelity
+        run: go test -run 'TestCorpusSerializationLosesNoText|TestCorpusScopeWarnings' ./...
+
+      # Spec principle 2 makes the static cross-compiled binary a hard
+      # requirement. Proving it nightly means a tag never discovers a broken
+      # target during a release.
+      - name: Cross-compile every release target
+        run: |
+          for t in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64; do
+            echo "building $t"
+            CGO_ENABLED=0 GOOS="${t%/*}" GOARCH="${t#*/}" go build -o /dev/null ./cmd/decant
+          done
+
+      # Modules actually linked into the binary, not the whole module graph.
+      # "go list -m all" includes test-only and tool dependencies -- pdfcpu
+      # pulls in cobra for its own CLI -- none of which are redistributed in
+      # our release binaries. Auditing those would fail nightly for licences
+      # we do not ship.
+      - name: Licence audit covers everything we redistribute
+        run: |
+          missing=0
+          for m in $(go list -deps -f '{{if .Module}}{{.Module.Path}}{{end}}' ./... \
+                     | sort -u | grep -v '^github.com/sroberts/decant$'); do
+            grep -q "$m" THIRD_PARTY.md || { echo "not in THIRD_PARTY.md: $m"; missing=1; }
+          done
+          exit $missing
+
+  deep-fuzz:
+    name: Deep fuzz
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [FuzzLexer, FuzzInterpret, FuzzOpen, FuzzParseCMap]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          check-latest: true
+
+      # Ten minutes against sixty on the PR gate. Malformed PDFs are a hostile
+      # input class and the short run is only a smoke test; the interesting
+      # crashes have historically taken longer than a minute to reach.
+      - name: Fuzz ${{ matrix.target }}
+        run: go test -run XXX -fuzz ${{ matrix.target }} -fuzztime 10m ./internal/pdf/
+
+      # A crash writes its input under testdata/fuzz; keeping it is the whole
+      # point, since it becomes the regression seed.
+      - name: Upload the failing input
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: internal/pdf/testdata/fuzz/

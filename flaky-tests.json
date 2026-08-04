@@ -1,0 +1,27 @@
+{
+  "$comment": "Observed intermittent failures and what came of them. A flake in an autonomous loop is worse than in a human one: an agent reruns, sees green, and concludes its change was fine. Entries stay after they are fixed, because 'we saw this once and it was real' is the useful record. Updated by hand and by .github/workflows/flaky.yml.",
+  "updated": "2026-08-04",
+  "entries": [
+    {
+      "test": "FuzzLexer",
+      "package": "github.com/sroberts/decant/internal/pdf",
+      "first_seen": "2026-08-03",
+      "occurrences": 1,
+      "status": "environmental",
+      "symptom": "context deadline exceeded at 61.01s against -fuzztime 60s",
+      "diagnosis": "Go's fuzzing coordinator racing its own shutdown deadline as the run winds down. No failing input was written and no crash artifact was uploaded, which is what distinguishes this from a finding. Reproduced clean locally at 5.3M executions.",
+      "action": "Re-run. If it recurs, drop -fuzztime to 45s so shutdown has margin inside the step budget rather than weakening the gate."
+    },
+    {
+      "test": "TestWriteDoesNotConsumeTheDocument",
+      "package": "github.com/sroberts/decant",
+      "first_seen": "2026-08-02",
+      "occurrences": 1,
+      "status": "fixed",
+      "symptom": "malformed PDF: cannot read xref: parser panic: pdfcpu: config problem: EOF, under -race only",
+      "diagnosis": "Not a flaky test. pdfcpu's NewDefaultConfiguration reads and lazily creates ~/.config/pdfcpu/config.yml, caches it in an unsynchronised package global, and panics on any problem. Parallel test binaries on a fresh runner raced to create that file and one read it half-written.",
+      "fixed_by": "model.ConfigPath = \"disable\" in internal/pdf/doc.go, which bypasses the file entirely.",
+      "action": "None. Kept as the record of why that init() exists, so nobody removes it."
+    }
+  ]
+}

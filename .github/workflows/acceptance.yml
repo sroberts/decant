@@ -1,0 +1,83 @@
+name: Acceptance tracking
+
+# Recomputes acceptance-rates.json from PR history.
+#
+# The number this produces is only worth having if the classification behind
+# it is honest. A raw merged/total ratio counts a PR that GitHub auto-closed
+# for a branch-management reason as a rejection, which flatters or damns the
+# figure for reasons that have nothing to do with the change. The superseded
+# list in acceptance-rates.json is maintained by hand for exactly that.
+on:
+  schedule:
+    # Mondays 06:00 UTC.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Recompute
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr list --state all --limit 500 \
+            --json number,state,mergedAt,closedAt > prs.json
+          python3 - <<'PY'
+          import json, datetime
+          prs = json.load(open('prs.json'))
+          prev = json.load(open('acceptance-rates.json'))
+
+          # Hand-maintained: closures that were not rejections.
+          superseded = {e['closed'] for e in prev.get('superseded', [])}
+
+          merged = [p for p in prs if p['state'] == 'MERGED']
+          closed = [p for p in prs if p['state'] == 'CLOSED']
+          open_ = [p for p in prs if p['state'] == 'OPEN']
+          rejected = [p for p in closed if p['number'] not in superseded]
+
+          denom = len(merged) + len(rejected)
+          prev['updated'] = datetime.date.today().isoformat()
+          prev['totals'] = {
+              'opened': len(prs),
+              'merged': len(merged),
+              'open': len(open_),
+              'closed_unmerged': len(closed),
+              'closed_superseded_by_tooling': len(closed) - len(rejected),
+              'rejected_on_review': len(rejected),
+          }
+          prev['acceptance_rate'] = round(len(merged) / denom, 4) if denom else None
+          json.dump(prev, open('acceptance-rates.json', 'w'), indent=2)
+          open('acceptance-rates.json', 'a').write('\n')
+
+          print(json.dumps(prev['totals'], indent=2))
+          print('acceptance_rate:', prev['acceptance_rate'])
+          PY
+
+      - name: Report
+        run: |
+          {
+            echo "### Acceptance"
+            echo '```json'
+            cat acceptance-rates.json
+            echo '```'
+            echo ""
+            echo "If this drifted, commit the regenerated file. Any newly closed PR is"
+            echo "counted as a rejection until it is added to the superseded list, which"
+            echo "is deliberate: an unexplained closure should show up."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Flag drift against the committed file
+        run: |
+          if ! git diff --quiet acceptance-rates.json; then
+            echo "acceptance-rates.json is out of date:"
+            git diff acceptance-rates.json
+            echo ""
+            echo "This does not fail the build. Commit the update when convenient."
+          fi

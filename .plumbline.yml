@@ -1,0 +1,28 @@
+# plumbline configuration. See `plumbline help config`.
+
+thresholds:
+  pass: 0.7
+
+signals:
+  # Disabled because it does not apply to this artifact, not to raise the
+  # score: level 3 is reached with it counted as a miss.
+  #
+  # The signal asks for an error-monitoring SDK (Sentry, OpenTelemetry) so
+  # agents can tell "this fix worked" from "this fix silently broke prod".
+  # decant has no prod. It is an offline library and CLI that a user runs on
+  # their own machine over their own files, and it opens no sockets at all --
+  # a deliberate posture, and the reason fetching device profiles over the
+  # network was refused (spec section 5) rather than an oversight. Wiring in
+  # a telemetry SDK would send a user's document metadata off their machine
+  # to satisfy a checkbox.
+  #
+  # The capability the signal is really asking for does exist here, in the
+  # form the artifact allows: every heuristic that fires records a Diagnostic,
+  # the conversion Report carries a 0-100 quality score, and spec principle 3
+  # makes "fail loud, degrade gracefully" non-negotiable. That is decant's
+  # error channel. It reports to the user who ran it, which is the only party
+  # in the loop.
+  #
+  # Revisit if decant ever grows a hosted component.
+  l3.error-monitoring:
+    enabled: false

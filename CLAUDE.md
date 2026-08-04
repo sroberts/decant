@@ -148,6 +148,19 @@ Ship M1–M3 before optimizing: tuning layout thresholds against three test file
 
 decant ships MIT, so vendored `hyph-utf8` hyphenation patterns must be MIT, BSD, or unrestricted. **Russian and Swedish are deliberately absent** — their files are LPPL-only, and §4.6 says to drop the language rather than complicate the license, even though §4.6's own language list names them. `TestLPPLLanguagesAreNotShipped` guards this; `THIRD_PARTY.md` records the per-file audit. Adding a language means auditing its license first.
 
+## CI topology
+
+Four workflows, split by latency budget.
+
+- `ci.yml` on every push and PR: build, gofmt, vet, staticcheck, race tests, an 85% coverage floor, the corpus manifest, epubcheck, and a 60-second fuzz per target.
+- `nightly.yml`: the full coverage suite with the corpus present, epubcheck and reading-order across every file, cross-compilation of all five release targets, a licence audit against what is actually linked, and a **10-minute** fuzz per target.
+- `flaky.yml` weekly: runs the suite five times under `-race` and reports anything that fails some runs but not all. `flaky-tests.json` records what has been seen and what came of it; entries stay after they are fixed, because the record is the useful part.
+- `acceptance.yml` weekly: recomputes `acceptance-rates.json` from PR history.
+
+The licence audit uses `go list -deps`, not `go list -m all`. The latter includes test-only and tool dependencies — pdfcpu pulls in cobra for its own CLI — which are never linked into decant and whose licences we do not redistribute.
+
+`.plumbline.yml` records why `l3.error-monitoring` does not apply: decant opens no sockets, and its error channel is the conversion report. Note that plumbline's MVP does not yet read the file, so it is documentation for now.
+
 ## Releasing
 
 `git tag -a vX.Y.Z && git push origin vX.Y.Z`. `.github/workflows/release.yml` does the rest: it re-runs gofmt, vet and the test suite, cross-compiles five targets with `-trimpath` and the tag stamped via `-ldflags -X main.version`, writes `SHA256SUMS`, asserts the built binary reports the tag, and publishes.

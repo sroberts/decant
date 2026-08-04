@@ -28,7 +28,7 @@ func cmdProfile(args []string, stdout, stderr io.Writer) error {
 	out := fs.String("o", "-", "output path; - writes to stdout")
 
 	if err := fs.Parse(args); err != nil {
-		return &decant.UsageError{Err: err}
+		return usageError(err)
 	}
 	if fs.NArg() > 0 {
 		fs.Usage()

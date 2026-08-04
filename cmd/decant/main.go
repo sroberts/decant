@@ -198,6 +198,13 @@ func parseArgs(fs *flag.FlagSet, args []string) ([]string, error) {
 	}
 }
 
+func usageError(err error) error {
+	if errors.Is(err, flag.ErrHelp) {
+		return nil
+	}
+	return &decant.UsageError{Err: err}
+}
+
 // strictError signals that --strict was set and warnings were recorded.
 type strictError struct {
 	warnings int

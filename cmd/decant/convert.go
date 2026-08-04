@@ -53,7 +53,7 @@ func cmdConvert(ctx context.Context, args []string, stdout, stderr io.Writer) er
 
 	positional, err := parseArgs(fs, args)
 	if err != nil {
-		return &decant.UsageError{Err: err}
+		return usageError(err)
 	}
 	if len(positional) != 1 {
 		fs.Usage()

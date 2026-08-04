@@ -3,13 +3,31 @@
 decant is MIT licensed. Everything vendored or depended on here is
 license-compatible with redistribution under those terms.
 
+Releases ship statically linked binaries, so the transitive dependencies
+below are redistributed too, not just the direct ones.
+
 ## Go dependencies
+
+Direct:
 
 | Module | License | Role |
 |---|---|---|
 | `github.com/pdfcpu/pdfcpu` | Apache-2.0 | xref parsing, object model, image extraction |
 | `golang.org/x/image` | BSD-3-Clause | `font/sfnt` metrics and cmap, Catmull-Rom resampling |
 | `golang.org/x/text` | BSD-3-Clause | Unicode normalization |
+
+Indirect, pulled in by pdfcpu and redistributed in the release binaries. All
+permissive; verified against the LICENSE file in each module:
+
+| Module | License |
+|---|---|
+| `github.com/clipperhouse/uax29/v2` | MIT |
+| `github.com/hhrutter/lzw` | BSD-3-Clause |
+| `github.com/hhrutter/pkcs7` | MIT |
+| `github.com/mattn/go-runewidth` | MIT |
+| `github.com/pkg/errors` | BSD-2-Clause |
+| `golang.org/x/crypto` | BSD-3-Clause |
+| `gopkg.in/yaml.v2` | Apache-2.0 |
 | `github.com/hhrutter/tiff` | BSD-3-Clause | CMYK TIFF decode, which `x/image/tiff` rejects |
 
 ## Hyphenation patterns

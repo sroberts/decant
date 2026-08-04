@@ -446,3 +446,27 @@ func TestExplicitFlagBeatsProfileFile(t *testing.T) {
 		t.Fatalf("exit code = %d\n%s", code, stderr)
 	}
 }
+
+func TestUsageListsEverySubcommand(t *testing.T) {
+	// The usage text drifted once already: "profile" shipped without being
+	// listed anywhere a user would look. Deriving the check from the
+	// dispatch table is not possible without exporting it, so this at least
+	// fails when a verb is added and the text is not.
+	verbs := []string{"convert", "probe", "meta", "profile", "version"}
+
+	_, stdout, _ := runCLI("--help")
+	for _, v := range verbs {
+		if !strings.Contains(stdout, "decant "+v) {
+			t.Errorf("usage does not list %q:\n%s", v, stdout)
+		}
+	}
+
+	// And every listed verb has to actually dispatch rather than falling
+	// through to the unknown-verb path.
+	for _, v := range verbs {
+		_, _, stderr := runCLI(v, "--nonexistent-flag")
+		if strings.Contains(stderr, "unknown command") {
+			t.Errorf("%q is listed in the usage text but does not dispatch", v)
+		}
+	}
+}

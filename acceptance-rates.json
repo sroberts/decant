@@ -1,0 +1,31 @@
+{
+  "$comment": "Acceptance rates for agent-authored changes. Recomputed by .github/workflows/acceptance.yml; the interpretation notes are maintained by hand. A raw merged/total ratio would be misleading here, so closures are classified: a PR GitHub auto-closed when its base branch was deleted is not a rejection, and counting it as one would make the number flattering in the wrong direction and useless as a quality signal.",
+  "updated": "2026-08-04",
+  "window": "all PRs to date",
+  "totals": {
+    "opened": 18,
+    "merged": 15,
+    "open": 1,
+    "closed_unmerged": 2,
+    "closed_superseded_by_tooling": 2,
+    "rejected_on_review": 0
+  },
+  "acceptance_rate": 1.0,
+  "notes": [
+    "acceptance_rate divides merged by (merged + rejected_on_review). PRs still open and PRs superseded by tooling are excluded from the denominator.",
+    "PRs 8 and 9 were auto-closed by GitHub when squash-merging PR 7 deleted their base branch. Both were rebased and reopened as 10 and 11 with identical content. The underlying mistake was stacking PRs on a repo that squash-merges, which does not compose; it was a process error, not a rejected change.",
+    "A 100% rate on a solo-maintained repository measures very little on its own. It is recorded so that a later drop is visible, which is the only thing it is good for."
+  ],
+  "superseded": [
+    {
+      "closed": 8,
+      "reopened_as": 10,
+      "reason": "base branch deleted by squash-merge"
+    },
+    {
+      "closed": 9,
+      "reopened_as": 11,
+      "reason": "base branch deleted by squash-merge"
+    }
+  ]
+}

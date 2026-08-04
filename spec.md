@@ -68,6 +68,7 @@ The CrossPoint TUI is a **separate application** that depends on this module rat
 decant convert <input.pdf> [-o output.epub] [flags]
 decant probe   <input.pdf> [--stage=glyphs|lines|blocks|structure] [--page=N] [--json]
 decant meta    <input.pdf>
+decant profile [--dump standard|crosspoint|minimal] [-o file]
 decant version
 ```
 

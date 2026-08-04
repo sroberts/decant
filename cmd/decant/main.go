@@ -123,6 +123,7 @@ Usage:
   decant convert <input.pdf> [-o output.epub] [flags]
   decant probe   <input.pdf> [--stage=glyphs|lines|blocks|structure] [--page=N] [--json]
   decant meta    <input.pdf> [--json]
+  decant profile [--dump standard|crosspoint|minimal] [-o file]
   decant version
 
 convert is the default verb, so "decant book.pdf" writes book.epub.

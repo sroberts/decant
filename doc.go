@@ -54,6 +54,19 @@
 // because XHTML has no other heading elements. Write does not mutate the
 // Document, so it may be called more than once on the same tree.
 //
+// A block carries more than its text. [Block.Styles] holds the bold and
+// italic runs as character ranges, and [Block.Links] the internal
+// cross-references, both editable the same way: narrowing a range or clearing
+// a target suppresses the markup without touching the words.
+//
+// # Device profiles
+//
+// [Options.ApplyProfileDefaults] applies one of the built-in profiles. For a
+// device decant has never seen, [LoadProfileDoc] reads a profile document and
+// [Options.ApplyProfileDoc] layers it over a chosen base, so a profile can be
+// shared as a file rather than compiled in. [WriteProfileDoc] emits a
+// built-in as a starting point.
+//
 // # Determinism
 //
 // Identical input and options produce byte-identical output. Anchor IDs are
@@ -71,7 +84,8 @@
 //
 //   - [EncryptedError], for a PDF carrying an /Encrypt dictionary
 //   - [NoTextLayerError], for a scan. decant does not OCR, ever
-//   - [MalformedError], for damage beyond what xref reconstruction recovers
+//   - [MalformedError], for damage beyond what xref reconstruction recovers.
+//     A table that can be rebuilt is repaired instead, and the report says so
 //   - [UsageError], for invalid options
 //
 // Everything short of those degrades gracefully and records a [Diagnostic] in

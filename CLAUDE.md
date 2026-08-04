@@ -31,6 +31,10 @@ go test -run XXX -fuzz FuzzParseCMap -fuzztime 60s ./internal/pdf/
 go run ./cmd/decant convert book.pdf -o book.epub
 go run ./cmd/decant probe book.pdf --stage=lines --page=12
 go run ./cmd/decant meta book.pdf --json
+go run ./cmd/decant profile --dump crosspoint -o kobo.json
+go run ./cmd/decant convert book.pdf --profile-file kobo.json
+
+make dist VERSION=v1.2.0                # rehearse the release build locally
 ```
 
 `epubcheck` (brew/apt) must be on `PATH` for the validation tests to run; they skip silently without it, and CI enforces them. staticcheck must be recent enough for the local Go version — reinstall with `go install honnef.co/go/tools/cmd/staticcheck@latest` if it reports "invalid Go version".
@@ -41,8 +45,17 @@ go run ./cmd/decant meta book.pdf --json
 *.go                 package decant — public engine (Options, Converter, Document, Report)
   classify.go        body font, heading classification, outline reconciliation
   render.go          blocks to XHTML, chapter splitting, TOC construction
+  crossref.go        resolves /Link destinations to target blocks (§4.9)
+  profile.go         shareable device profile documents (§5)
+  script.go          right-to-left detection for the scope warning (§1)
 internal/pdf/        content stream lexer + interpreter, font machinery, doc/xref access
+  link.go            /Link annotation extraction (§4.9)
+  nametree.go        /Names /Dests walk; pdfcpu cannot resolve named dests
+  rebuild.go         xref repair by scanning for object markers (§4.1)
+  xmp.go             dc:language from the XMP packet (§4.6)
 internal/layout/     column detection, line assembly, block segmentation, figures
+  linkmap.go         link rectangles to character ranges (§4.9)
+  style.go           bold/italic runs to character ranges (§4.6)
 internal/images/     decode, scale, dither, re-encode extracted images
 internal/hyphen/     Liang pattern matching + embedded hyph-utf8 patterns
 internal/epub/       deterministic EPUB 3.3 serialization

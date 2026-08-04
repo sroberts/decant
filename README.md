@@ -221,64 +221,35 @@ model at any stage.
 - Encrypted, scanned, and malformed input detection with distinct exit codes
 - `convert`, `probe`, `meta`, and `version` subcommands
 
-## Not implemented yet
+## Known limitations
 
-`--table-mode=image` has been **removed**. It needed the vector renderer that
-spec §13.1 leaves for after v1, so it only ever degraded to text with a
-warning; shipping it would have frozen a mode that silently does something
-else into the v1 API. Asking for it is now a usage error.
+Each is tracked, and each is reported at conversion time rather than silent.
 
-`--jobs` is **reserved**: it is accepted, prints a notice, and does nothing.
-Page processing is sequential and stays that way. Stages 1 and 2 run inside
-pdfcpu, which mutates its cross-reference table on every dereference with no
-lock, and they are two thirds of per-page time; the rest is about 4% of a
-conversion. `Options.Jobs` was removed from the library rather than shipped
-as a permanent no-op. See spec §4.
+| | |
+|---|---|
+| Vector artwork is dropped, so a chart drawn as paths is lost | [#17](../../issues/17) |
+| Table detection over-fires on mathematical typesetting | [#18](../../issues/18) |
+| Inline (`BI`) images are not extracted | [#19](../../issues/19) |
+| JPEG 2000 and JBIG2 images are dropped | [#20](../../issues/20) |
+| Right-to-left and vertical CJK text is extracted but not laid out | [#21](../../issues/21) |
+| `--jobs` is reserved and page processing is sequential | [#22](../../issues/22) |
+| Math symbol fonts decode to U+FFFD | [#24](../../issues/24) |
 
-Hyphenation language comes from `--language`, then the PDF's `/Lang`, then
+The two that will bite hardest on an academic library are the first and the
+last: a diagram-heavy paper loses its figures, and a mathematics text loses
+its symbols. Both say so in the report.
+
+## Language handling
+
+Hyphenation language resolves from `--language`, then the PDF's `/Lang`, then
 XMP `dc:language`, then English.
 
-Dehyphenation ships patterns for English, German, Spanish, French, Italian,
-Dutch, Polish, and Portuguese. Russian and Swedish are **deliberately
-absent**: their `hyph-utf8` files are LPPL-only, and spec §4.6 says to drop
-the language rather than take on a share-alike or renaming condition. Those
-documents convert normally with dehyphenation disabled and a diagnostic.
-See [`THIRD_PARTY.md`](THIRD_PARTY.md).
-
-Right-to-left and vertical CJK documents **convert, with a warning**. The
-text is extracted correctly, but decant emits it in logical order: it does not
-run the bidirectional algorithm and does not set vertical columns, so lines
-may read in the wrong direction. The report carries `rtl_letter_ratio` and
-`vertical_text_pages`, and the warning fires once the document is
-substantially right-to-left rather than on a single quoted phrase.
-
-JPEG 2000 and JBIG2 images drop with a diagnostic: neither has a pure-Go
-decoder, and spec principle 2 rules out cgo. Inline (`BI`) images have their
-position recorded for scan detection but are not extracted.
-
-Vector artwork is not rendered, so a chart drawn as paths is lost. It is
-reported rather than dropped silently: the conversion report counts painted
-paths per page and warns when a page carries enough of them to be a diagram.
-Rasterization was **considered and declined** for v1 (spec §13, closed
-2026-08-03). §1 permits either rasterizing or dropping, and dropping is what
-decant does.
-
-In practice that means a **diagram-heavy academic PDF loses its figures**.
-On the sample corpus the warning fires on 39 of one mathematics textbook's
-117 pages and on nothing else, so the exposure is narrow, but if your library
-is mostly papers with plotted charts, expect to lose them and to be told so.
-The text around them converts normally.
-
-Table detection still over-fires on mathematical typesetting. On the corpus's
-LaTeX textbook it reports eight medium-confidence tables that are really
-plotted axes and matrix-like displays; `--table-mode=auto` renders those as
-space-preserved text rather than as `<table>`, so no false table markup
-reaches the reader, but the layout is still wrong. `--table-mode=drop` turns
-detection off entirely and leaves the text as paragraphs. Three guards
-already narrow this — a fill ratio, a rejection of grids whose cells hold one
-character each, and a rule that a table may not straddle the page's own
-columns — and further tuning needs a corpus with more real tables in it than
-this one has.
+Patterns ship for English, German, Spanish, French, Italian, Dutch, Polish,
+and Portuguese. Russian and Swedish are **deliberately absent**: their
+`hyph-utf8` files are LPPL-only, and spec §4.6 says to drop the language
+rather than take on a share-alike or renaming condition. Those documents
+convert normally with dehyphenation disabled and a diagnostic. See
+[`THIRD_PARTY.md`](THIRD_PARTY.md).
 
 ## Milestones
 

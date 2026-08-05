@@ -30,7 +30,7 @@ func cmdProbe(ctx context.Context, args []string, stdout, stderr io.Writer) erro
 	)
 	positional, err := parseArgs(fs, args)
 	if err != nil {
-		return &decant.UsageError{Err: err}
+		return usageError(err)
 	}
 	if len(positional) != 1 {
 		fs.Usage()
@@ -137,7 +137,7 @@ func cmdMeta(ctx context.Context, args []string, stdout, stderr io.Writer) error
 
 	positional, err := parseArgs(fs, args)
 	if err != nil {
-		return &decant.UsageError{Err: err}
+		return usageError(err)
 	}
 	if len(positional) != 1 {
 		fs.Usage()
